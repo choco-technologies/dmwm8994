@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml)
 
-WM8994 audio codec control driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` carries register transactions, and a separate `dmsai` node carries PCM. The control interface uses the standard `DMDRVI_IOCTL_AUDIO_*` commands proposed in [dmdrvi PR #26](https://github.com/choco-technologies/dmdrvi/pull/26). No CPU family specific code is required in this module.
+WM8994 audio codec control driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` carries register transactions, and a separate `dmsai` node carries PCM. The control interface uses the standard `DMDRVI_IOCTL_AUDIO_*` commands available in [dmdrvi v2.6](https://github.com/choco-technologies/dmdrvi/releases/tag/v2.6). No CPU family specific code is required in this module.
 
 ## Board configuration
 
@@ -61,7 +61,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-For STM32F746G-DISCO also use `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`. Until the generic audio API is released by `dmdrvi`, build against the companion checkout with `-DDMDRVI_API_INCLUDE_DIR=/path/to/dmdrvi/include`.
+The build fetches dmdrvi v2.6 or newer. For STM32F746G-DISCO also use `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`.
 
 ## Sources
 

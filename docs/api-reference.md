@@ -15,7 +15,7 @@ The section name is the codec device node name and must be 1..32 characters. An 
 
 ## Standard audio controls
 
-These types and commands are defined by `dmdrvi_ioctl.h` in [dmdrvi PR #26](https://github.com/choco-technologies/dmdrvi/pull/26).
+These types and commands are defined by `dmdrvi_ioctl.h` in [dmdrvi v2.6](https://github.com/choco-technologies/dmdrvi/releases/tag/v2.6) and later.
 
 | Command | Argument | Behavior |
 | --- | --- | --- |
