@@ -13,3 +13,6 @@ build/
 *.tmp
 *.swp
 *~
+
+build-f7/
+build-loader/

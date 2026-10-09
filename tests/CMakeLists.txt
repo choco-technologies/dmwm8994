@@ -1,12 +1,19 @@
 set(DMOD_MODULE_NAME        test_dmwm8994)
 set(DMOD_MODULE_VERSION     ${PROJECT_VERSION})
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         1024)
+set(DMOD_STACK_SIZE         4096)
 set(DMOD_PRIORITY           0)
+unset(DMOD_DMR_PATH)
 
 dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     dmwm8994_test.c
 )
+
+target_include_directories(${DMOD_MODULE_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
+
+dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi@>=2.0 dmini)
 
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's

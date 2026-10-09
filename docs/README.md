@@ -1,14 +1,3 @@
-# dmwm8994 Documentation
+# dmwm8994 documentation
 
-Welcome to the dmwm8994 module documentation.
-
-## Contents
-
-- **[api-reference.md](api-reference.md)** - Command-line usage and behavior
-
-View documentation using `dmf-man`:
-
-```bash
-dmf-man dmwm8994          # Main documentation
-dmf-man dmwm8994 api      # API reference
-```
+See [API reference](api-reference.md) for codec configuration and controls, and the repository [README](../README.md) for a usage example and board wiring.
