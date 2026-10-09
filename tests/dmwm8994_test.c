@@ -1,98 +1,95 @@
 #define DMOD_ENABLE_REGISTRATION ON
 #define ENABLE_DIF_REGISTRATIONS ON
-#include "dmod_test.h"
-#include "dmdrvi.h"
-#include "dmini.h"
+#include "dmod.h"
+#include "dmfsi.h"
 #include "dmwm8994.h"
 #include <errno.h>
 #include <string.h>
 
 typedef struct {
-    dmod_dmdrvi_create_t create;
-    dmod_dmdrvi_free_t free;
-    dmod_dmdrvi_ioctl_t ioctl;
-    dmod_dmdrvi_friend_changed_t friend_changed;
-} driver_t;
+    dmod_dmfsi_init_t init;
+    dmod_dmfsi_deinit_t deinit;
+    dmod_dmfsi_mounted_t mounted;
+    dmod_dmfsi_fopen_t fopen;
+    dmod_dmfsi_fclose_t fclose;
+    dmod_dmfsi_ioctl_t ioctl;
+} test_fs_t;
 
-/** @brief Resolve the same DIF entries that dmdevfs uses. */
-static bool get_driver(driver_t *drv)
+/** @brief Load dmdevfs, which discovers and starts the codec driver itself. */
+static bool load_devfs(test_fs_t *fs)
 {
-    if (Dmod_LoadModuleByName("dmwm8994") == NULL ||
-        !Dmod_EnableModule("dmwm8994", false, NULL)) return false;
-    Dmod_Context_t *module = Dmod_GetModuleContext("dmwm8994");
+    if (!Dmod_LoadModuleByName("dmdevfs") ||
+        !Dmod_EnableModule("dmdevfs", false, NULL)) return false;
+    Dmod_Context_t *module = Dmod_GetModuleContext("dmdevfs");
     if (!module) return false;
-    drv->create = Dmod_GetDifFunction(module, dmod_dmdrvi_create_sig);
-    drv->free = Dmod_GetDifFunction(module, dmod_dmdrvi_free_sig);
-    drv->ioctl = Dmod_GetDifFunction(module, dmod_dmdrvi_ioctl_sig);
-    drv->friend_changed = Dmod_GetDifFunction(module, dmod_dmdrvi_friend_changed_sig);
-    return drv->create && drv->free && drv->ioctl && drv->friend_changed;
+    fs->init = Dmod_GetDifFunction(module, dmod_dmfsi_init_sig);
+    fs->deinit = Dmod_GetDifFunction(module, dmod_dmfsi_deinit_sig);
+    fs->mounted = Dmod_GetDifFunction(module, dmod_dmfsi_mounted_sig);
+    fs->fopen = Dmod_GetDifFunction(module, dmod_dmfsi_fopen_sig);
+    fs->fclose = Dmod_GetDifFunction(module, dmod_dmfsi_fclose_sig);
+    fs->ioctl = Dmod_GetDifFunction(module, dmod_dmfsi_ioctl_sig);
+    return fs->init && fs->deinit && fs->mounted && fs->fopen &&
+           fs->fclose && fs->ioctl;
 }
 
-/** @brief Build a valid INI context for the codec. */
-static dmini_context_t make_config(const char *address)
+/** @brief Exercise the supplied mounted node while no I2C friend exists. */
+static int test_valid_node(test_fs_t *fs, const char *node, const char *config_dir)
 {
-    dmini_context_t ini = dmini_create();
-    if (!ini) return NULL;
-    dmini_parse_string(ini, "[codec]\ndriver_name=dmwm8994\n");
-    if (address) dmini_set_string(ini, "codec", "address", address);
-    dmini_set_active_section(ini, "codec", 0);
-    return ini;
+    dmfsi_context_t mount = fs->init(config_dir);
+    if (!mount) return 1;
+    fs->mounted(mount, "/dev");
+    void *file = NULL;
+    int failed = fs->fopen(mount, &file, node, DMFSI_O_RDWR, 0) != DMFSI_OK;
+    if (!failed)
+    {
+        dmdrvi_audio_info_t info;
+        if (fs->ioctl(mount, file, DMDRVI_IOCTL_AUDIO_GET_INFO, &info) != -ENODEV)
+            failed = 1;
+        dmdrvi_audio_config_t config = {
+            .sample_rate_hz = 12345, .channels = 2, .sample_bits = 16,
+            .output = DMDRVI_AUDIO_OUTPUT_HEADPHONE,
+            .volume_percent = 50, .muted = false,
+        };
+        if (fs->ioctl(mount, file, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config) != -ENOTSUP)
+            failed = 1;
+        fs->fclose(mount, file);
+    }
+    fs->deinit(mount);
+    return failed;
 }
 
-/** @brief Keep the host fixture empty; each step creates its own context. */
-void dmod_test_setup(void) { }
-
-/** @brief Each test step releases its context before returning. */
-void dmod_test_teardown(void) { }
-
-/** @brief Reject addresses outside the usable seven-bit I2C range. */
-DMOD_TEST_STEP(rejects_invalid_address)
+/** @brief Check that dmdevfs does not mount a node with invalid I2C address. */
+static int test_invalid_address(test_fs_t *fs, const char *node,
+                                const char *config_dir)
 {
-    driver_t drv;
-    if (!get_driver(&drv)) { DMOD_TEST_EXPECT_TRUE(false); return; }
-    dmini_context_t ini = make_config("120");
-    if (!ini) { DMOD_TEST_EXPECT_NOT_NULL(ini); return; }
-    dmdrvi_dev_num_t num;
-    DMOD_TEST_EXPECT_TRUE(drv.create(ini, &num) == NULL);
-    dmini_destroy(ini);
+    dmfsi_context_t mount = fs->init(config_dir);
+    if (!mount) return 1;
+    fs->mounted(mount, "/dev");
+    void *file = NULL;
+    int opened = fs->fopen(mount, &file, node, DMFSI_O_RDWR, 0) == DMFSI_OK;
+    if (opened) fs->fclose(mount, file);
+    fs->deinit(mount);
+    return opened;
 }
 
-/** @brief Report an unavailable bus through the public audio controls. */
-DMOD_TEST_STEP(reports_missing_bus)
+/** @brief Test codec behavior through a caller-selected dmdevfs device node. */
+int main(int argc, char **argv)
 {
-    driver_t drv;
-    if (!get_driver(&drv)) { DMOD_TEST_EXPECT_TRUE(false); return; }
-    dmini_context_t ini = make_config("26");
-    if (!ini) { DMOD_TEST_EXPECT_NOT_NULL(ini); return; }
-    dmdrvi_dev_num_t num;
-    dmdrvi_context_t ctx = drv.create(ini, &num);
-    if (!ctx) { DMOD_TEST_EXPECT_NOT_NULL(ctx); dmini_destroy(ini); return; }
-    DMOD_TEST_EXPECT_EQ(num.flags, DMDRVI_NUM_ALT_NAME);
-    DMOD_TEST_EXPECT_EQ(strcmp(num.alt_name, "codec"), 0);
-    dmdrvi_audio_info_t info;
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_GET_INFO, &info), -ENODEV);
-    dmdrvi_audio_config_t config = {
-        48000, 2, 16, DMDRVI_AUDIO_OUTPUT_HEADPHONE, 50, false
-    };
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config), -ENODEV);
-    drv.free(ctx);
-    dmini_destroy(ini);
-}
-
-/** @brief Reject unsupported PCM rates before attempting I2C access. */
-DMOD_TEST_STEP(rejects_unsupported_format_before_bus_access)
-{
-    driver_t drv;
-    if (!get_driver(&drv)) { DMOD_TEST_EXPECT_TRUE(false); return; }
-    dmini_context_t ini = make_config("26");
-    if (!ini) { DMOD_TEST_EXPECT_NOT_NULL(ini); return; }
-    dmdrvi_dev_num_t num;
-    dmdrvi_context_t ctx = drv.create(ini, &num);
-    if (!ctx) { DMOD_TEST_EXPECT_NOT_NULL(ctx); dmini_destroy(ini); return; }
-    dmdrvi_audio_config_t config = {
-        12345, 2, 16, DMDRVI_AUDIO_OUTPUT_HEADPHONE, 50, false
-    };
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config), -ENOTSUP);
-    drv.free(ctx);
-    dmini_destroy(ini);
+    if (argc != 4 || strncmp(argv[1], "/dev/", 5) != 0)
+    {
+        Dmod_Printf("Usage: test_dmwm8994 /dev/CODEC VALID_CONFIG_DIR INVALID_CONFIG_DIR\n");
+        return 1;
+    }
+    test_fs_t fs = {0};
+    if (!load_devfs(&fs))
+    {
+        Dmod_Printf("WM8994 TEST: cannot load dmdevfs\n");
+        return 1;
+    }
+    const char *node = argv[1] + 4;
+    int failures = test_valid_node(&fs, node, argv[2]);
+    failures += test_invalid_address(&fs, node, argv[3]);
+    Dmod_Printf("WM8994 TEST: %s (%d failures)\n",
+                failures ? "FAIL" : "PASS", failures);
+    return failures ? 1 : 0;
 }

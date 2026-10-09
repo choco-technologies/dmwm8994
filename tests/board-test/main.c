@@ -3,37 +3,45 @@
 #include "dmsai_ioctl.h"
 
 static int16_t pcm[256 * 2];
+static int16_t captured[256 * 2];
 
 /** @brief Send a short low-level test tone through the SAI DMA path. */
-static int stream_pcm(void *sai)
+static int stream_pcm(void *codec)
 {
     for (unsigned i = 0; i < 256; ++i) {
         int16_t sample = (i & 8U) ? -1000 : 1000;
         pcm[2 * i] = sample;
         pcm[2 * i + 1] = sample;
     }
-    if (Dmod_FileWrite(pcm, 1, sizeof(pcm), sai) != sizeof(pcm)) return -1;
-    if (Dmod_Ioctl(sai, DMSAI_IOCTL_DRAIN, NULL) != 0) return -2;
+    if (Dmod_FileWrite(pcm, 1, sizeof(pcm), codec) != sizeof(pcm)) return -1;
+    if (Dmod_Ioctl(codec, DMSAI_IOCTL_DRAIN, NULL) != 0) return -2;
+    if (Dmod_FileRead(captured, 1, sizeof(captured), codec) != sizeof(captured))
+        return -3;
+    int32_t peak = 0;
+    for (unsigned i = 0; i < sizeof(captured) / sizeof(captured[0]); ++i)
+    {
+        int32_t sample = captured[i];
+        int32_t magnitude = sample < 0 ? -sample : sample;
+        if (magnitude > peak) peak = magnitude;
+    }
+    Dmod_Printf("WM8994 PLAY TEST: microphone peak=%ld\n", (long)peak);
     dmsai_status_t status;
-    if (Dmod_Ioctl(sai, DMSAI_IOCTL_GET_STATUS, &status) != 0 ||
-        status.transfer_errors) return -3;
+    if (Dmod_Ioctl(codec, DMSAI_IOCTL_GET_STATUS, &status) != 0 ||
+        status.transfer_errors) return -4;
     return 0;
 }
 
 /** @brief Check the mute bit while SAI is supplying the codec clock. */
 int main(int argc, char **argv)
 {
-    if (argc != 3)
+    if (argc != 2)
     {
-        Dmod_Printf("Usage: wm8994playtest CODEC_DEVICE SAI_DEVICE\n");
+        Dmod_Printf("Usage: wm8994playtest CODEC_DEVICE\n");
         return 1;
     }
     void *codec = Dmod_FileOpen(argv[1], "r+");
-    void *sai = Dmod_FileOpen(argv[2], "r+");
-    if (!codec || !sai) {
-        Dmod_Printf("WM8994 PLAY TEST: cannot open codec or SAI\n");
-        if (sai) Dmod_FileClose(sai);
-        if (codec) Dmod_FileClose(codec);
+    if (!codec) {
+        Dmod_Printf("WM8994 PLAY TEST: cannot open codec\n");
         return 1;
     }
     dmdrvi_audio_config_t config = {
@@ -44,9 +52,9 @@ int main(int argc, char **argv)
         .volume_percent = 50,
         .muted = true,
     };
-    int ret = Dmod_Ioctl(sai, DMSAI_IOCTL_START, NULL);
-    bool started = ret == 0;
-    if (!ret) ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config);
+    int ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config);
+    uint32_t timeout_ms = 1000;
+    if (!ret) ret = Dmod_Ioctl(codec, DMSAI_IOCTL_SET_IO_TIMEOUT, &timeout_ms);
     uint8_t volume_percent = 60;
     if (!ret) ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_VOLUME, &volume_percent);
     bool muted = false;
@@ -61,16 +69,10 @@ int main(int argc, char **argv)
             info.config.sample_rate_hz != 48000 || info.config.muted ||
             info.config.volume_percent != volume_percent) ret = -1;
     }
-    if (!ret) ret = stream_pcm(sai);
+    if (!ret) ret = stream_pcm(codec);
     muted = true;
     int cleanup = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_MUTE, &muted);
     if (!ret && cleanup) ret = cleanup;
-    if (started)
-    {
-        cleanup = Dmod_Ioctl(sai, DMSAI_IOCTL_STOP, NULL);
-        if (!ret && cleanup) ret = cleanup;
-    }
-    Dmod_FileClose(sai);
     Dmod_FileClose(codec);
     Dmod_Printf("WM8994 PLAY TEST: %s (%d)\n", ret ? "FAIL" : "PASS", ret);
     return ret ? 1 : 0;
