@@ -36,6 +36,16 @@ set(DMOD_SCRIPTS_DIR ${DMOD_DIR}/scripts CACHE PATH "DMOD scripts directory")
 include(${DMOD_DIR}/paths.cmake)
 dmod_setup_external_module()
 
+# Use a local dmdrvi checkout while the standard audio ioctl contract is
+# being reviewed; normal builds use the installed dmdrvi release headers.
+set(DMDRVI_API_INCLUDE_DIR "" CACHE PATH "Directory containing dmdrvi_ioctl.h")
+if(DMDRVI_API_INCLUDE_DIR)
+    if(NOT EXISTS "${DMDRVI_API_INCLUDE_DIR}/dmdrvi_ioctl.h")
+        message(FATAL_ERROR "DMDRVI_API_INCLUDE_DIR must contain dmdrvi_ioctl.h")
+    endif()
+    include_directories(BEFORE "${DMDRVI_API_INCLUDE_DIR}")
+endif()
+
 # Name of the module
 set(DMOD_MODULE_NAME        dmwm8994)
 
@@ -67,7 +77,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 )
 
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.0
+    dmdrvi
     dmini
     dmi2c
     dmosi
@@ -92,5 +102,5 @@ add_subdirectory(tools/wm8994ctl)
 
 option(DMWM8994_BUILD_BOARD_TEST "Build the optional codec and SAI board test" OFF)
 if(DMWM8994_BUILD_BOARD_TEST)
-    add_subdirectory(tools/wm8994playtest)
+    add_subdirectory(tests/board-test)
 endif()

@@ -3,7 +3,7 @@ set(DMOD_MODULE_VERSION     ${PROJECT_VERSION})
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
 set(DMOD_STACK_SIZE         4096)
 set(DMOD_PRIORITY           0)
-unset(DMOD_DMR_PATH)
+set(DMOD_DMR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/test_dmwm8994.dmr)
 
 dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     dmwm8994_test.c
@@ -13,7 +13,7 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
-dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi@>=2.0 dmini)
+dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi dmini)
 
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's
@@ -26,7 +26,7 @@ if(DMF_GET_EXECUTABLE AND DMOD_LOADER_EXECUTABLE)
     add_test(
         NAME ${DMOD_MODULE_NAME}
         COMMAND ${CMAKE_COMMAND} -E env DMOD_DMF_DIR=${DMOD_DMF_DIR}
-            bash -c "${DMF_GET_EXECUTABLE} install -d ${DMOD_DMF_DIR}/${DMOD_MODULE_NAME}.dmd -y && ${DMOD_LOADER_EXECUTABLE} ${DMOD_DMF_DIR}/${DMOD_MODULE_NAME}.dmf"
+            bash -c "${DMF_GET_EXECUTABLE} install -d ${DMOD_DMF_DIR}/${DMOD_MODULE_NAME}-local.dmd -y && ${DMOD_LOADER_EXECUTABLE} ${DMOD_DMF_DIR}/${DMOD_MODULE_NAME}.dmf"
     )
 else()
     message(WARNING "dmf-get/dmod_loader not found - 'ctest' will not run ${DMOD_MODULE_NAME}. Build the tools first with -DDMOD_BUILD_TOOLS=ON")

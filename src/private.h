@@ -11,12 +11,13 @@ struct dmdrvi_context {
     void *bus;
     dmosi_mutex_t lock;
     uint16_t address;
-    dmwm8994_info_t info;
+    uint16_t expected_rate_register;
+    dmdrvi_audio_info_t info;
 };
 int codec_connect(dmdrvi_context_t c);
 void codec_disconnect(dmdrvi_context_t c);
 int codec_read_reg(dmdrvi_context_t c, uint16_t reg, uint16_t *value);
-int codec_configure(dmdrvi_context_t c, const dmwm8994_config_t *config);
+int codec_configure(dmdrvi_context_t c, const dmdrvi_audio_config_t *config);
 int codec_set_volume(dmdrvi_context_t c, uint8_t volume);
 int codec_set_mute(dmdrvi_context_t c, bool mute);
 #endif

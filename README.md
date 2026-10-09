@@ -3,51 +3,43 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml)
 
-WM8994 audio codec control driver for DMOD. It uses an existing `dmi2c` device, so the same I²C controller can serve the codec and other devices. PCM samples travel through a separate `dmsai` node.
+WM8994 audio codec control driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` carries register transactions, and a separate `dmsai` node carries PCM. The control interface uses the standard `DMDRVI_IOCTL_AUDIO_*` commands proposed in [dmdrvi PR #26](https://github.com/choco-technologies/dmdrvi/pull/26). No CPU family specific code is required in this module.
 
-## Supported configuration
+## Board configuration
 
-The first hardware path is stereo headphone output with 16-bit samples on AIF1 and the codec as a clock slave. The driver accepts 8, 11.025, 16, 22.05, 32, 44.1, 48 and 96 kHz. The STM32F746G-DISCO board uses 48 kHz; its config is [codec.ini](configs/board/stm32f746g-disco/codec.ini). It joins the `lcd` friend group because that board's I²C3 bus is already declared by `dmft5336`'s `touch.ini` there. Other boards choose any group containing a `dmi2c` node with `friend_role=i2c_bus`.
+[codec.ini](configs/board/stm32f746g-disco/codec.ini) contains the I2C3 pins and bus, SAI2 pins and stream, and the WM8994 node for STM32F746G-DISCO. All sections use `friends_group=wm8994`; the bus has `friend_role=i2c_bus` so the codec discovers it without a fixed path. The codec's unshifted 7-bit address is `0x1A` (decimal 26), as used by ST's Discovery audio BSP. `driver_order=10` configures pins, `11` creates controllers, and `12` creates the codec. The resulting codec node is `/dev/wm8994`; use the actual SAI node shown by `ls /dev`.
 
-The codec's 7-bit address is configured as decimal `26` (0x1A). The `codec` section becomes `/dev/codec`. `dmdevfs` creates the node; this module supplies its `dmdrvi` implementation.
+This configuration owns I2C3 and SAI2. Do not also load `dmft5336`'s `touch.ini`, `dmi2c`'s `i2c3.ini`, or `dmsai`'s `sai2.ini`: each of those would configure one of the same controllers again. To use touch and audio together, put their devices on one shared I2C3 node and assign the same friends group in the board configuration.
 
-```ini
-[codec]
-driver_name=dmwm8994
-friends_group=audio_i2c
-address=26
-```
+On another board, provide an INI section with `driver_name=dmwm8994`, `address=<unshifted 7-bit address>`, and a `friends_group` shared with a `dmi2c` node whose `friend_role=i2c_bus`. The section name becomes the codec node name. The driver supports headphone output with two 16-bit channels at 8, 11.025, 16, 22.05, 32, 44.1, 48 or 96 kHz; 48 kHz has been checked on STM32F746G-DISCO.
 
-## API
+## Control API
 
-Open the codec control node and use `Dmod_Ioctl`:
+Include `dmdrvi_ioctl.h` for the generic types and commands. `DMDRVI_IOCTL_AUDIO_GET_INFO` reads the WM8994 ID and current settings. `DMDRVI_IOCTL_AUDIO_CONFIGURE` accepts `dmdrvi_audio_config_t`. `DMDRVI_IOCTL_AUDIO_SET_VOLUME` takes a `uint8_t` percentage from 0 to 100, mapped to the WM8994 gain code. `DMDRVI_IOCTL_AUDIO_SET_MUTE` takes a `bool`. See [API reference](docs/api-reference.md) for arguments, errors and sequencing.
 
 ```c
 #include "dmod.h"
-#include "dmwm8994.h"
+#include "dmdrvi_ioctl.h"
 #include "dmsai_ioctl.h"
 
-void *codec = Dmod_FileOpen("/dev/codec", "r+");
-void *sai = Dmod_FileOpen("/dev/dmsai1", "r+");
-dmwm8994_info_t info;
-if (codec && sai &&
-    Dmod_Ioctl(codec, DMWM8994_IOCTL_GET_INFO, &info) == 0 &&
-    info.chip_id == DMWM8994_CHIP_ID &&
-    Dmod_Ioctl(sai, DMSAI_IOCTL_START, NULL) == 0) {
-    dmwm8994_config_t config = {
+void *codec = Dmod_FileOpen(codec_path, "r+");
+void *sai = Dmod_FileOpen(sai_path, "r+");
+if (codec && sai && Dmod_Ioctl(sai, DMSAI_IOCTL_START, NULL) == 0) {
+    dmdrvi_audio_config_t cfg = {
         .sample_rate_hz = 48000,
-        .output = dmwm8994_output_headphone,
-        .volume = 32,
+        .channels = 2,
+        .sample_bits = 16,
+        .output = DMDRVI_AUDIO_OUTPUT_HEADPHONE,
+        .volume_percent = 50,
         .muted = true,
     };
-    if (Dmod_Ioctl(codec, DMWM8994_IOCTL_CONFIGURE, &config) == 0) {
+    if (Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_CONFIGURE, &cfg) == 0) {
         bool muted = false;
-        if (Dmod_Ioctl(codec, DMWM8994_IOCTL_SET_MUTE, &muted) == 0) {
-            /* Write PCM frames to sai, then drain the SAI stream. */
-            Dmod_Ioctl(sai, DMSAI_IOCTL_DRAIN, NULL);
+        if (Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_MUTE, &muted) == 0) {
+            /* Write PCM frames to sai and call DMSAI_IOCTL_DRAIN. */
         }
         muted = true;
-        Dmod_Ioctl(codec, DMWM8994_IOCTL_SET_MUTE, &muted);
+        Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_MUTE, &muted);
     }
     Dmod_Ioctl(sai, DMSAI_IOCTL_STOP, NULL);
 }
@@ -55,11 +47,13 @@ if (sai) Dmod_FileClose(sai);
 if (codec) Dmod_FileClose(codec);
 ```
 
-Start the corresponding `dmsai` stream first so it supplies MCLK, then configure the codec while SAI sends silence. After configuration, unmute and write PCM. Stop the stream after muting. The first start of MCLK after codec configuration can clear the codec's audio registers, so `GET_INFO` marks the codec unconfigured if it sees that the rate register changed. `DMWM8994_IOCTL_SET_VOLUME` takes `uint8_t *`; `DMWM8994_IOCTL_SET_MUTE` takes `bool *`. `DMWM8994_IOCTL_GET_INFO` probes the chip independently of audio setup. Failed I²C transactions return a negative error code.
+Start SAI first to supply MCLK and silence, configure the codec, then unmute and send PCM. A first start of MCLK after codec setup can clear its audio registers. `GET_INFO` detects this by reading back the AIF1 rate and reports `configured=false`; configure again while MCLK is running.
 
-For a board check, run `wm8994ctl info` to read the ID. `wm8994ctl setup` initializes the headphone path in a muted state; supply MCLK first if you intend to play audio. `wm8994ctl unmute` and `wm8994ctl mute` control the digital mute around playback. The optional `wm8994playtest` starts SAI, configures WM8994, transmits a short PCM tone through DMA, then mutes and stops. See [API reference](docs/api-reference.md) for all arguments and errors.
+## Tools and tests
 
-## Build and test
+`wm8994ctl DEVICE info|setup|mute|unmute` works on a caller-supplied codec node. For the board configuration above, run `wm8994ctl /dev/wm8994 info`.
+
+The optional board test `wm8994playtest CODEC_DEVICE SAI_DEVICE` in `tests/board-test` exercises both device nodes: it starts SAI, configures WM8994, sends 256 stereo frames through SAI/DMA, drains, mutes and stops. Build it with `-DDMWM8994_BUILD_BOARD_TEST=ON -DDMWM8994_BOARD_TEST_DMSAI_INCLUDE=/path/to/dmsai/include`. The host unit suite checks configuration validation and unavailable-bus errors through the driver DIF; the board test checks the mounted device nodes.
 
 ```sh
 cmake -S . -B build -DDMOD_DIR=/path/to/dmod
@@ -67,9 +61,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-For STM32F746G-DISCO, select `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`. The module, its command, and test application are separate DMOD files. The native [Makefile](Makefile) is also available through `make DMOD_DIR=/path/to/dmod`.
-
-To build the hardware integration test with a local `dmsai` checkout, add `-DDMWM8994_BUILD_BOARD_TEST=ON -DDMWM8994_BOARD_TEST_DMSAI_INCLUDE=/path/to/dmsai/include`. Load its `wm8994playtest.dmf` together with the codec and SAI modules; it expects `/dev/codec` and `/dev/dmsai1`.
+For STM32F746G-DISCO also use `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`. Until the generic audio API is released by `dmdrvi`, build against the companion checkout with `-DDMDRVI_API_INCLUDE_DIR=/path/to/dmdrvi/include`.
 
 ## Sources
 

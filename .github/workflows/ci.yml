@@ -19,11 +19,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout pending dmdrvi audio API
+        uses: actions/checkout@v4
+        with:
+          repository: JaxCalder/dmdrvi
+          ref: feature/audio-codec-ioctls
+          path: dmdrvi-audio-api
+
       - name: Build dmwm8994
         run: |
           mkdir -p build
           cd build
-          cmake .. -DDMOD_MODE=DMOD_MODULE
+          cmake .. -DDMOD_MODE=DMOD_MODULE -DDMDRVI_API_INCLUDE_DIR="$PWD/../dmdrvi-audio-api/include"
           cmake --build .
 
       - name: Verify module files
@@ -38,5 +45,5 @@ jobs:
       - name: Run tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
-          dmf-get install -d ${DMOD_DMF_DIR}/test_dmwm8994.dmd -y
+          dmf-get install -d ${DMOD_DMF_DIR}/test_dmwm8994-local.dmd -y
           dmod_loader build/dmf/test_dmwm8994.dmf

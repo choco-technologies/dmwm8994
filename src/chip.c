@@ -6,9 +6,18 @@
 int codec_connect(dmdrvi_context_t c)
 {
     if (c->bus) return 0;
-    if (!c->bus_path) return -ENODEV;
+    if (!c->bus_path)
+    {
+        DMOD_LOG_ERROR("dmwm8994: I2C bus friend is not ready\n");
+        return -ENODEV;
+    }
     c->bus = Dmod_FileOpen(c->bus_path, "r+");
-    return c->bus ? 0 : -ENODEV;
+    if (!c->bus)
+    {
+        DMOD_LOG_ERROR("dmwm8994: cannot open I2C bus %s\n", c->bus_path);
+        return -ENODEV;
+    }
+    return 0;
 }
 
 /** @brief Close transport after a bus change or node removal. */
@@ -32,6 +41,10 @@ int codec_read_reg(dmdrvi_context_t c, uint16_t reg, uint16_t *value)
     };
     dmi2c_transfer_t transfer = { messages, 2 };
     ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &transfer);
+    if (ret)
+    {
+        DMOD_LOG_ERROR("dmwm8994: register 0x%04X read failed (%d)\n", reg, ret);
+    }
     if (!ret) *value = (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
     return ret;
 }
@@ -47,7 +60,12 @@ static int write_reg(dmdrvi_context_t c, uint16_t reg, uint16_t value)
     };
     dmi2c_message_t message = { c->address, false, data, sizeof(data) };
     dmi2c_transfer_t transfer = { &message, 1 };
-    return Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &transfer);
+    ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &transfer);
+    if (ret)
+    {
+        DMOD_LOG_ERROR("dmwm8994: register 0x%04X write failed (%d)\n", reg, ret);
+    }
+    return ret;
 }
 
 /** @brief Apply an ordered register sequence, stopping at the first error. */
@@ -63,11 +81,12 @@ static int write_sequence(dmdrvi_context_t c, const uint16_t (*sequence)[2], siz
 /** @brief Set both headphone gains with the volume update bit. */
 int codec_set_volume(dmdrvi_context_t c, uint8_t volume)
 {
-    if (volume > 63) return -EINVAL;
-    uint16_t value = (uint16_t)(0x0140U | volume);
+    if (volume > 100) return -EINVAL;
+    uint16_t gain_code = (uint16_t)(((uint16_t)volume * 63U + 50U) / 100U);
+    uint16_t value = (uint16_t)(0x0140U | gain_code);
     int ret = write_reg(c, 0x001C, value);
     if (!ret) ret = write_reg(c, 0x001D, value);
-    if (!ret) c->info.config.volume = volume;
+    if (!ret) c->info.config.volume_percent = volume;
     return ret;
 }
 
@@ -80,7 +99,6 @@ int codec_set_mute(dmdrvi_context_t c, bool mute)
     if (!ret && ((actual & 0x0200U) != 0U) != mute) ret = -EIO;
     if (!ret) {
         c->info.config.muted = mute;
-        c->info.dac1_filter_register = actual;
     }
     return ret;
 }
@@ -129,17 +147,22 @@ static int rate_code(uint32_t hz)
 }
 
 /** @brief Probe, reset and start the headphone anti-pop sequence. */
-int codec_configure(dmdrvi_context_t c, const dmwm8994_config_t *config)
+int codec_configure(dmdrvi_context_t c, const dmdrvi_audio_config_t *config)
 {
-    if (config->output != dmwm8994_output_headphone)
+    if (config->output != DMDRVI_AUDIO_OUTPUT_HEADPHONE ||
+        config->channels != 2 || config->sample_bits != 16)
         return -ENOTSUP;
-    if (config->volume > 63) return -EINVAL;
+    if (config->volume_percent > 100) return -EINVAL;
     int code = rate_code(config->sample_rate_hz);
     if (code < 0) return code;
     uint16_t id = 0;
     int ret = codec_read_reg(c, 0x0000, &id);
     if (ret) return ret;
-    if (id != DMWM8994_CHIP_ID) return -ENODEV;
+    if (id != DMWM8994_CHIP_ID)
+    {
+        DMOD_LOG_ERROR("dmwm8994: unexpected chip ID 0x%04X\n", id);
+        return -ENODEV;
+    }
     c->info.configured = false;
     ret = write_reg(c, 0x0000, 0x0000);
     if (!ret) ret = start_bias(c);
@@ -147,11 +170,11 @@ int codec_configure(dmdrvi_context_t c, const dmwm8994_config_t *config)
     if (!ret) ret = write_reg(c, 0x0210, (uint16_t)code);
     if (!ret) ret = write_reg(c, 0x0110, 0x8100);
     if (!ret) dmosi_thread_sleep(325);
-    if (!ret) ret = codec_set_volume(c, config->volume);
+    if (!ret) ret = codec_set_volume(c, config->volume_percent);
     if (!ret) ret = codec_set_mute(c, config->muted);
     if (ret) return ret;
-    c->info.chip_id = id;
-    c->info.aif1_rate_register = (uint16_t)code;
+    c->info.hardware_id = id;
+    c->expected_rate_register = (uint16_t)code;
     c->info.config = *config;
     c->info.configured = true;
     return 0;

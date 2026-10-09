@@ -39,9 +39,13 @@ static dmini_context_t make_config(const char *address)
     return ini;
 }
 
+/** @brief Keep the host fixture empty; each step creates its own context. */
 void dmod_test_setup(void) { }
+
+/** @brief Each test step releases its context before returning. */
 void dmod_test_teardown(void) { }
 
+/** @brief Reject addresses outside the usable seven-bit I2C range. */
 DMOD_TEST_STEP(rejects_invalid_address)
 {
     driver_t drv;
@@ -53,6 +57,7 @@ DMOD_TEST_STEP(rejects_invalid_address)
     dmini_destroy(ini);
 }
 
+/** @brief Report an unavailable bus through the public audio controls. */
 DMOD_TEST_STEP(reports_missing_bus)
 {
     driver_t drv;
@@ -64,25 +69,30 @@ DMOD_TEST_STEP(reports_missing_bus)
     if (!ctx) { DMOD_TEST_EXPECT_NOT_NULL(ctx); dmini_destroy(ini); return; }
     DMOD_TEST_EXPECT_EQ(num.flags, DMDRVI_NUM_ALT_NAME);
     DMOD_TEST_EXPECT_EQ(strcmp(num.alt_name, "codec"), 0);
-    dmwm8994_info_t info;
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMWM8994_IOCTL_GET_INFO, &info), -ENODEV);
-    dmwm8994_config_t config = { 48000, dmwm8994_output_headphone, 32, false };
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMWM8994_IOCTL_CONFIGURE, &config), -ENODEV);
+    dmdrvi_audio_info_t info;
+    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_GET_INFO, &info), -ENODEV);
+    dmdrvi_audio_config_t config = {
+        48000, 2, 16, DMDRVI_AUDIO_OUTPUT_HEADPHONE, 50, false
+    };
+    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config), -ENODEV);
     drv.free(ctx);
     dmini_destroy(ini);
 }
 
+/** @brief Reject unsupported PCM rates before attempting I2C access. */
 DMOD_TEST_STEP(rejects_unsupported_format_before_bus_access)
 {
     driver_t drv;
     if (!get_driver(&drv)) { DMOD_TEST_EXPECT_TRUE(false); return; }
-    dmini_context_t ini = make_config(NULL);
+    dmini_context_t ini = make_config("26");
     if (!ini) { DMOD_TEST_EXPECT_NOT_NULL(ini); return; }
     dmdrvi_dev_num_t num;
     dmdrvi_context_t ctx = drv.create(ini, &num);
     if (!ctx) { DMOD_TEST_EXPECT_NOT_NULL(ctx); dmini_destroy(ini); return; }
-    dmwm8994_config_t config = { 12345, dmwm8994_output_headphone, 32, false };
-    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMWM8994_IOCTL_CONFIGURE, &config), -ENOTSUP);
+    dmdrvi_audio_config_t config = {
+        12345, 2, 16, DMDRVI_AUDIO_OUTPUT_HEADPHONE, 50, false
+    };
+    DMOD_TEST_EXPECT_EQ(drv.ioctl(ctx, ctx, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config), -ENOTSUP);
     drv.free(ctx);
     dmini_destroy(ini);
 }
