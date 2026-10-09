@@ -33,6 +33,8 @@ These types and commands are defined by `dmdrvi_ioctl.h` in [dmdrvi v2.6](https:
 
 Open the codec node with `Dmod_FileOpen(path, "r+")` and call `AUDIO_CONFIGURE` before `Dmod_FileWrite` or `Dmod_FileRead`. Both use interleaved stereo signed 16-bit little-endian samples: four bytes per frame. Write maps left/right samples to SAI slots 0/2. With `input=dmic2`, read returns microphone samples from slots 1/3; with `input=none`, the driver read callback returns `-ENOTSUP`. A read or write before configuration returns `-EPIPE`; the byte count must be a multiple of four. `DMSAI_IOCTL_GET_CONFIG`, `GET_STATUS`, `SET_IO_TIMEOUT`, `GET_IO_TIMEOUT` and `DRAIN` are forwarded to the active SAI friend through the codec handle. The codec node permits one open handle at a time.
 
+Four-slot PCM conversion uses a 256-byte buffer per active direction, allocated on first use and freed when the stream stops. Register transfers use scratch storage in the codec context. The driver places no transfer buffers on the stack.
+
 ## Tests
 
 `tests/dmwm8994_test.c` mounts `dmdevfs` with valid and invalid INI fixtures and exercises the caller-supplied codec node without manually activating the codec driver. The optional `tests/board-test` executable `wm8994playtest CODEC_DEVICE` exercises PCM write, microphone read and controls through the mounted codec node on hardware. The caller supplies the codec node path.

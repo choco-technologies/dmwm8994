@@ -25,7 +25,7 @@ Include `dmdrvi_ioctl.h` for the generic types and commands. `DMDRVI_IOCTL_AUDIO
 #include <stdint.h>
 
 const char *codec_path = "/dev/wm8994";
-int16_t pcm[256 * 2] = {0}; /* 256 interleaved stereo frames. */
+static int16_t pcm[256 * 2]; /* 256 interleaved stereo frames, outside the stack. */
 void *codec = Dmod_FileOpen(codec_path, "r+");
 if (codec) {
     dmdrvi_audio_config_t cfg = {

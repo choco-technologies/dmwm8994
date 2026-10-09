@@ -31,7 +31,7 @@ Supported rates are 8, 11.025, 16, 22.05, 32, 44.1, 48 and 96 kHz at AIF1 256fs.
 #include "dmsai_ioctl.h"
 #include <stdint.h>
 
-int16_t samples[256 * 2] = {0};
+static int16_t samples[256 * 2];
 void *codec = Dmod_FileOpen("/dev/wm8994", "r+");
 dmdrvi_audio_config_t config = {
     .sample_rate_hz = 48000, .channels = 2, .sample_bits = 16,

@@ -1,6 +1,5 @@
 #include "private.h"
 #include "registers.h"
-#include "dmi2c_types.h"
 #include <errno.h>
 
 /** @brief Open the reported dmi2c friend only on first use. */
@@ -34,19 +33,24 @@ int codec_read_reg(dmdrvi_context_t c, uint16_t reg, uint16_t *value)
 {
     int ret = codec_connect(c);
     if (ret) return ret;
-    uint8_t address[2] = { (uint8_t)(reg >> 8), (uint8_t)reg };
-    uint8_t data[2] = { 0, 0 };
-    dmi2c_message_t messages[2] = {
-        { c->address, false, address, sizeof(address) },
-        { c->address, true, data, sizeof(data) },
-    };
-    dmi2c_transfer_t transfer = { messages, 2 };
-    ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &transfer);
+    c->i2c.tx[0] = (uint8_t)(reg >> 8);
+    c->i2c.tx[1] = (uint8_t)reg;
+    c->i2c.messages[0].address = c->address;
+    c->i2c.messages[0].read = false;
+    c->i2c.messages[0].data = c->i2c.tx;
+    c->i2c.messages[0].size = 2;
+    c->i2c.messages[1].address = c->address;
+    c->i2c.messages[1].read = true;
+    c->i2c.messages[1].data = c->i2c.rx;
+    c->i2c.messages[1].size = sizeof(c->i2c.rx);
+    c->i2c.transfer.messages = c->i2c.messages;
+    c->i2c.transfer.count = 2;
+    ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &c->i2c.transfer);
     if (ret)
     {
         DMOD_LOG_ERROR("dmwm8994: register 0x%04X read failed (%d)\n", reg, ret);
     }
-    if (!ret) *value = (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
+    if (!ret) *value = (uint16_t)(((uint16_t)c->i2c.rx[0] << 8) | c->i2c.rx[1]);
     return ret;
 }
 
@@ -55,13 +59,17 @@ static int write_reg(dmdrvi_context_t c, uint16_t reg, uint16_t value)
 {
     int ret = codec_connect(c);
     if (ret) return ret;
-    uint8_t data[4] = {
-        (uint8_t)(reg >> 8), (uint8_t)reg,
-        (uint8_t)(value >> 8), (uint8_t)value,
-    };
-    dmi2c_message_t message = { c->address, false, data, sizeof(data) };
-    dmi2c_transfer_t transfer = { &message, 1 };
-    ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &transfer);
+    c->i2c.tx[0] = (uint8_t)(reg >> 8);
+    c->i2c.tx[1] = (uint8_t)reg;
+    c->i2c.tx[2] = (uint8_t)(value >> 8);
+    c->i2c.tx[3] = (uint8_t)value;
+    c->i2c.messages[0].address = c->address;
+    c->i2c.messages[0].read = false;
+    c->i2c.messages[0].data = c->i2c.tx;
+    c->i2c.messages[0].size = sizeof(c->i2c.tx);
+    c->i2c.transfer.messages = c->i2c.messages;
+    c->i2c.transfer.count = 1;
+    ret = Dmod_Ioctl(c->bus, dmi2c_ioctl_cmd_transfer, &c->i2c.transfer);
     if (ret)
     {
         DMOD_LOG_ERROR("dmwm8994: register 0x%04X write failed (%d)\n", reg, ret);

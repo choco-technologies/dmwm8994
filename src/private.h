@@ -2,6 +2,7 @@
 #define DMWM8994_PRIVATE_H
 #include "dmod.h"
 #include "dmdrvi.h"
+#include "dmi2c_types.h"
 #include "dmosi.h"
 #include "dmwm8994.h"
 #define CODEC_MAGIC 0x574D3934U
@@ -9,9 +10,17 @@
 typedef struct codec_handle {
     uint32_t magic;
     void *sai;
+    uint8_t *pcm_rx_buffer;
+    uint8_t *pcm_tx_buffer;
     bool started;
     bool quad_slots;
 } codec_handle_t;
+typedef struct codec_i2c_scratch {
+    uint8_t tx[4];
+    uint8_t rx[2];
+    dmi2c_message_t messages[2];
+    dmi2c_transfer_t transfer;
+} codec_i2c_scratch_t;
 struct dmdrvi_context {
     uint32_t magic;
     char *bus_path;
@@ -22,6 +31,7 @@ struct dmdrvi_context {
     bool digital_mic2;
     uint16_t address;
     uint16_t expected_rate_register;
+    codec_i2c_scratch_t i2c;
     dmdrvi_audio_info_t info;
 };
 int codec_connect(dmdrvi_context_t c);

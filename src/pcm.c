@@ -8,6 +8,7 @@
 #define CODEC_PCM_FRAME_BYTES 4U
 #define CODEC_SAI_FRAME_BYTES 8U
 #define CODEC_PCM_BATCH_FRAMES 32U
+#define CODEC_PCM_BATCH_BYTES (CODEC_PCM_BATCH_FRAMES * CODEC_SAI_FRAME_BYTES)
 #define CODEC_HEADPHONE_SLOTS 0x05U
 #define CODEC_ALL_SLOTS 0x0FU
 
@@ -68,11 +69,26 @@ int codec_stream_start(dmdrvi_context_t c, codec_handle_t *handle,
 /** @brief Stop DMA and release the exclusive SAI friend handle. */
 void codec_stream_stop(codec_handle_t *handle)
 {
-    if (!handle || !handle->sai) return;
-    if (handle->started) Dmod_Ioctl(handle->sai, DMSAI_IOCTL_STOP, NULL);
-    Dmod_FileClose(handle->sai);
+    if (!handle) return;
+    if (handle->sai)
+    {
+        if (handle->started) Dmod_Ioctl(handle->sai, DMSAI_IOCTL_STOP, NULL);
+        Dmod_FileClose(handle->sai);
+    }
     handle->sai = NULL;
     handle->started = false;
+    if (handle->pcm_rx_buffer) Dmod_Free(handle->pcm_rx_buffer);
+    if (handle->pcm_tx_buffer) Dmod_Free(handle->pcm_tx_buffer);
+    handle->pcm_rx_buffer = NULL;
+    handle->pcm_tx_buffer = NULL;
+}
+
+/** @brief Allocate one DMA frame conversion buffer on first use. */
+static uint8_t *pcm_buffer(uint8_t **buffer)
+{
+    if (!*buffer) *buffer = Dmod_Malloc(CODEC_PCM_BATCH_BYTES);
+    if (!*buffer) DMOD_LOG_ERROR("dmwm8994: cannot allocate PCM conversion buffer\n");
+    return *buffer;
 }
 
 /** @brief Validate a stereo byte-stream request on the codec node. */
@@ -99,7 +115,8 @@ dmdrvi_ssize_t codec_pcm_read(dmdrvi_context_t c, codec_handle_t *handle,
     if (!c->digital_mic2 || !handle->quad_slots) return -ENOTSUP;
     uint8_t *out = buffer;
     size_t done = 0;
-    uint8_t frames[CODEC_PCM_BATCH_FRAMES * CODEC_SAI_FRAME_BYTES];
+    uint8_t *frames = pcm_buffer(&handle->pcm_rx_buffer);
+    if (!frames) return -ENOMEM;
     while (done < size)
     {
         size_t count = (size - done) / CODEC_PCM_FRAME_BYTES;
@@ -134,7 +151,8 @@ dmdrvi_ssize_t codec_pcm_write(dmdrvi_context_t c, codec_handle_t *handle,
     }
     const uint8_t *in = buffer;
     size_t done = 0;
-    uint8_t frames[CODEC_PCM_BATCH_FRAMES * CODEC_SAI_FRAME_BYTES];
+    uint8_t *frames = pcm_buffer(&handle->pcm_tx_buffer);
+    if (!frames) return -ENOMEM;
     while (done < size)
     {
         size_t count = (size - done) / CODEC_PCM_FRAME_BYTES;
