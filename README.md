@@ -59,6 +59,8 @@ if (codec) Dmod_FileClose(codec);
 
 The optional board test `wm8994playtest CODEC_DEVICE` in `tests/board-test` exercises the codec node: it configures WM8994, sends 256 stereo frames through SAI/DMA, captures 256 microphone frames, checks stream status, drains and mutes. Build it with `-DDMWM8994_BUILD_BOARD_TEST=ON`. The host test mounts `dmdevfs` and exercises a caller-supplied codec node with valid and invalid INI fixtures; it does not enable the codec driver manually.
 
+With the same board-test option, `wm8994melody /dev/wm8994` plays the public-domain melody "Twinkle Twinkle Little Star" repeatedly through the headphone output. It generates 48 kHz stereo PCM in a static 256-frame buffer, checks DMA status after each repeat, and runs until the board is reset or an audio error occurs.
+
 ```sh
 cmake -S . -B build -DDMOD_DIR=/path/to/dmod
 cmake --build build
