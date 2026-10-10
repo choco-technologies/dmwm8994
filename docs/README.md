@@ -55,8 +55,11 @@ The `dmsai` drain, status and I/O timeout commands can be sent through the codec
 wm8994ctl /dev/wm8994 info
 wm8994ctl /dev/wm8994 setup
 wm8994playtest /dev/wm8994
+wm8994melody /dev/wm8994
 ```
 
 `wm8994ctl setup` configures playback muted, then closes its handle and stops the stream. `wm8994playtest` configures the codec, sends a short PCM tone through DMA, captures microphone PCM, checks stream status, then mutes and closes.
+
+`wm8994melody` is an optional board test built with `-DDMWM8994_BUILD_BOARD_TEST=ON`. It repeats a synthesized public-domain melody on the headphone output until board reset or an audio error. Its PCM buffer has static storage, so playback does not put sample frames on the task stack.
 
 See [API reference](api-reference.md) for exact types, errors and the portable board configuration contract. See the repository [README](../README.md) for a C example and build instructions.
