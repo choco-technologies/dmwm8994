@@ -38,5 +38,6 @@ jobs:
       - name: Run tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
+          dmf-get install dmdevfs -y
           dmf-get install -d ${DMOD_DMF_DIR}/test_dmwm8994-local.dmd -y
-          dmod_loader build/dmf/test_dmwm8994.dmf
+          dmod_loader build/dmf/test_dmwm8994.dmf --args /dev/wm8994 tests/fixtures/valid tests/fixtures/invalid

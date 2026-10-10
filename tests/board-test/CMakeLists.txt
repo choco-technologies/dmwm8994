@@ -1,0 +1,6 @@
+set(DMOD_STACK_SIZE 2048)
+unset(DMOD_DMR_PATH)
+dmod_add_executable(wm8994playtest ${DMOD_MODULE_VERSION} main.c)
+target_link_libraries(wm8994playtest dmwm8994_if)
+target_include_directories(wm8994playtest PRIVATE ${dmsai_api_SOURCE_DIR}/include)
+dmod_link_modules(wm8994playtest dmdrvi@>=2.6)
