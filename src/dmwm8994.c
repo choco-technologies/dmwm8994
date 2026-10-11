@@ -209,6 +209,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, void, _close,
     codec_handle_t *open = handle;
     if (c->open_handle == open && open->magic == CODEC_HANDLE_MAGIC)
     {
+        (void)codec_power_down(c);
         codec_stream_stop(open);
         c->info.configured = false;
         c->open_handle = NULL;
@@ -330,6 +331,7 @@ static int stream_ioctl(dmdrvi_context_t c, codec_handle_t *open,
         return open->has_config ? apply_config(c, open, &open->last_config)
                                 : -EPIPE;
     case DMDRVI_IOCTL_AUDIO_STOP:
+        (void)codec_power_down(c);      /* (before the clocks stop) */
         codec_stream_stop(open);
         c->info.configured = false;
         return 0;

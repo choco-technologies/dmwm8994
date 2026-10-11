@@ -7,7 +7,9 @@
 /* One AIF1 frame is four 16-bit time slots: HP-L, DMIC2-L, HP-R, DMIC2-R. */
 #define CODEC_PCM_FRAME_BYTES 4U
 #define CODEC_SAI_FRAME_BYTES 8U
-#define CODEC_PCM_BATCH_FRAMES 32U
+/* Frames converted per write to the SAI: a write is a path through dmvfs and
+ * dmdevfs, so a period of the mixer (480 frames) is two, not fifteen */
+#define CODEC_PCM_BATCH_FRAMES 256U
 #define CODEC_PCM_BATCH_BYTES (CODEC_PCM_BATCH_FRAMES * CODEC_SAI_FRAME_BYTES)
 #define CODEC_HEADPHONE_SLOTS 0x05U
 #define CODEC_ALL_SLOTS 0x0FU
@@ -159,13 +161,21 @@ dmdrvi_ssize_t codec_pcm_write(dmdrvi_context_t c, codec_handle_t *handle,
     {
         size_t count = (size - done) / CODEC_PCM_FRAME_BYTES;
         if (count > CODEC_PCM_BATCH_FRAMES) count = CODEC_PCM_BATCH_FRAMES;
-        memset(frames, 0, count * CODEC_SAI_FRAME_BYTES);
+        const uint8_t *pcm = in + done;
+        uint8_t *slot = frames;
         for (size_t i = 0; i < count; ++i)
         {
-            memcpy(frames + i * CODEC_SAI_FRAME_BYTES,
-                   in + done + i * CODEC_PCM_FRAME_BYTES, 2);
-            memcpy(frames + i * CODEC_SAI_FRAME_BYTES + 4,
-                   in + done + i * CODEC_PCM_FRAME_BYTES + 2, 2);
+            /* HP-L, DMIC2-L (silent), HP-R, DMIC2-R (silent) */
+            slot[0] = pcm[0];
+            slot[1] = pcm[1];
+            slot[2] = 0;
+            slot[3] = 0;
+            slot[4] = pcm[2];
+            slot[5] = pcm[3];
+            slot[6] = 0;
+            slot[7] = 0;
+            pcm += CODEC_PCM_FRAME_BYTES;
+            slot += CODEC_SAI_FRAME_BYTES;
         }
         size_t wrote = Dmod_FileWrite(frames, 1,
                                       count * CODEC_SAI_FRAME_BYTES, handle->sai);

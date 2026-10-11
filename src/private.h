@@ -44,6 +44,7 @@ int codec_validate_config(const dmdrvi_audio_config_t *config);
 int codec_configure(dmdrvi_context_t c, const dmdrvi_audio_config_t *config);
 int codec_set_volume(dmdrvi_context_t c, uint8_t volume);
 int codec_set_mute(dmdrvi_context_t c, bool mute);
+int codec_power_down(dmdrvi_context_t c);
 int codec_stream_start(dmdrvi_context_t c, codec_handle_t *handle,
                        const dmdrvi_audio_config_t *config);
 void codec_stream_stop(codec_handle_t *handle);
