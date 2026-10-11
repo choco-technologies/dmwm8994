@@ -137,7 +137,7 @@ static int start_digital(dmdrvi_context_t c)
         { WM_REG_DAC1_RIGHT_ROUTE, WM_ROUTE_AIF1_TO_DAC1 },
         { WM_REG_DAC2_LEFT_ROUTE, 0x0000 },
         { WM_REG_DAC2_RIGHT_ROUTE, 0x0000 },
-        { WM_REG_AIF1_CONTROL, 0x0000 },
+        { WM_REG_AIF1_CONTROL, WM_AIF1_I2S_16BIT },
         { WM_REG_AIF1_MASTER, 0x0000 },
         { WM_REG_CORE_CLOCKING, WM_CORE_AIF1_DSP_CLOCKS },
         { WM_REG_AIF1_CLOCKING, WM_AIF1_MCLK1_ENABLE },
