@@ -4,7 +4,7 @@
 
 ## Bring-up on STM32F746G-DISCO
 
-Load `configs/board/stm32f746g-disco/codec.ini` with the GPIO, `dmi2c`, `dmsai` and `dmwm8994` modules. It configures the I2C3 and SAI2 pins, their controllers and the codec in one `friends_group=wm8994`. The codec address is the board's unshifted 7-bit address `0x1A`, derived from ST's shifted [AUDIO_I2C_ADDRESS](https://github.com/STMicroelectronics/32f746gdiscovery-bsp/blob/main/stm32746g_discovery.h) of `0x34`. The codec section is named `wm8994`, giving `/dev/wm8994`. Its `input=dmic2` route enables capture from the board microphone.
+Load `configs/board/stm32f746g-disco/codec.ini` with the GPIO, `dmi2c`, `dmsai` and `dmwm8994` modules. It configures the I2C3 and SAI2 pins, their controllers and the codec in one `friends_group=wm8994`. The codec address is the board's unshifted 7-bit address `0x1A`, derived from ST's shifted [AUDIO_I2C_ADDRESS](https://github.com/STMicroelectronics/32f746gdiscovery-bsp/blob/main/stm32746g_discovery.h) of `0x34`. The codec section is named `wm8994`, giving `/dev/wm8994`. Its `input=dmic2` route enables capture from the board microphone. With the touch panel, load `codec-with-touch.ini` next to dmft5336's `touch.ini` instead: the codec and the SAI join the touch panel's `friends_group=lcd`, and the codec uses the I2C3 bus node that `touch.ini` creates, at its own address.
 
 Do not load another configuration for I2C3 or SAI2 at the same time. A board using the touch controller must share its single I2C3 node with the codec and assign matching friends groups.
 
