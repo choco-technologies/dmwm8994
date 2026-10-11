@@ -113,6 +113,24 @@ int codec_set_mute(dmdrvi_context_t c, bool mute)
     return ret;
 }
 
+/**
+ * @brief Mute the outputs and reset the codec: everything powered down.
+ *
+ * Done while the SAI's clocks still run (the DAC registers need SYSCLK): a
+ * codec left powered without its clocks - its headphone charge pump among
+ * them - is heard as a steady whine. START configures it from its reset again.
+ */
+int codec_power_down(dmdrvi_context_t c)
+{
+    if (!c->info.configured) return 0;
+    int ret = write_reg(c, WM_REG_DAC1_FILTER, WM_DAC1_MUTE | WM_DAC1_FILTER_ENABLE);
+    if (!ret) ret = write_reg(c, WM_REG_HEADPHONE_LEFT, WM_HEADPHONE_UPDATE);
+    if (!ret) ret = write_reg(c, WM_REG_HEADPHONE_RIGHT, WM_HEADPHONE_UPDATE);
+    if (!ret) ret = write_reg(c, WM_REG_RESET, 0x0000);
+    c->info.configured = false;
+    return ret;
+}
+
 /** @brief Apply ST's WM8994 errata workaround and raise VMID. */
 static int start_bias(dmdrvi_context_t c)
 {
