@@ -1,5 +1,5 @@
 #include "private.h"
-#include "dmsai_ioctl.h"
+#include "dmdrvi_ioctl.h"
 #include <errno.h>
 #include <limits.h>
 #include <string.h>
@@ -14,11 +14,11 @@
 
 /** @brief Check that the SAI friend transports the codec's AIF1 format. */
 static int check_stream(dmdrvi_context_t c, codec_handle_t *handle,
-                        const dmsai_config_t *sai,
+                        const dmdrvi_audio_stream_t *sai,
                         const dmdrvi_audio_config_t *config)
 {
     bool quad = sai->active_slots == CODEC_ALL_SLOTS;
-    if (sai->framing != dmsai_frame_tdm || sai->pcm_format != dmsai_pcm_s16_le ||
+    if (sai->framing != DMDRVI_AUDIO_FRAMING_TDM || sai->format != DMDRVI_AUDIO_FORMAT_S16_LE ||
         sai->slot_bits != 16 || sai->slot_count != 4 || sai->frame_bits != 64 ||
         sai->sample_rate_hz != config->sample_rate_hz || !sai->transmit ||
         (c->digital_mic2 && (!quad || !sai->receive)) ||
@@ -37,8 +37,8 @@ int codec_stream_start(dmdrvi_context_t c, codec_handle_t *handle,
 {
     if (handle->started)
     {
-        dmsai_config_t active;
-        int ret = Dmod_Ioctl(handle->sai, DMSAI_IOCTL_GET_CONFIG, &active);
+        dmdrvi_audio_stream_t active;
+        int ret = Dmod_Ioctl(handle->sai, DMDRVI_IOCTL_AUDIO_GET_STREAM, &active);
         return ret ? ret : check_stream(c, handle, &active, config);
     }
     if (!c->sai_path)
@@ -52,10 +52,12 @@ int codec_stream_start(dmdrvi_context_t c, codec_handle_t *handle,
         DMOD_LOG_ERROR("dmwm8994: cannot open SAI friend %s\n", c->sai_path);
         return -ENODEV;
     }
-    dmsai_config_t sai;
-    int ret = Dmod_Ioctl(handle->sai, DMSAI_IOCTL_GET_CONFIG, &sai);
+    dmdrvi_audio_stream_t sai;
+    int ret = Dmod_Ioctl(handle->sai, DMDRVI_IOCTL_AUDIO_GET_STREAM, &sai);
     if (!ret) ret = check_stream(c, handle, &sai, config);
-    if (!ret) ret = Dmod_Ioctl(handle->sai, DMSAI_IOCTL_START, NULL);
+    if (!ret) ret = Dmod_Ioctl(handle->sai, DMDRVI_IOCTL_AUDIO_START, NULL);
+    if (!ret) ret = Dmod_Ioctl(handle->sai, DMDRVI_IOCTL_AUDIO_SET_TIMEOUT,
+                               &handle->timeout_ms);
     if (ret)
     {
         DMOD_LOG_ERROR("dmwm8994: SAI start failed (%d)\n", ret);
@@ -72,7 +74,7 @@ void codec_stream_stop(codec_handle_t *handle)
     if (!handle) return;
     if (handle->sai)
     {
-        if (handle->started) Dmod_Ioctl(handle->sai, DMSAI_IOCTL_STOP, NULL);
+        if (handle->started) Dmod_Ioctl(handle->sai, DMDRVI_IOCTL_AUDIO_STOP, NULL);
         Dmod_FileClose(handle->sai);
     }
     handle->sai = NULL;

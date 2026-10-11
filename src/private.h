@@ -12,6 +12,9 @@ typedef struct codec_handle {
     void *sai;
     uint8_t *pcm_rx_buffer;
     uint8_t *pcm_tx_buffer;
+    dmdrvi_audio_config_t last_config; /* last successful AUDIO_CONFIGURE */
+    uint32_t timeout_ms;               /* AUDIO_SET_TIMEOUT, applied to the SAI */
+    bool has_config;
     bool started;
     bool quad_slots;
 } codec_handle_t;

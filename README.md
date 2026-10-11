@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/dmwm8994/actions/workflows/ci.yml)
 
-WM8994 audio codec driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` carries register transactions, and the codec uses its `dmsai` friend for DMA audio. Applications open only the codec node for controls and stereo PCM input/output. The control interface uses the standard `DMDRVI_IOCTL_AUDIO_*` commands available in [dmdrvi v2.6](https://github.com/choco-technologies/dmdrvi/releases/tag/v2.6). No CPU family specific code is required in this module.
+WM8994 audio codec driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` carries register transactions, and the codec uses its `dmsai` friend for DMA audio. Applications open only the codec node for controls and stereo PCM input/output. The control interface uses the standard `DMDRVI_IOCTL_AUDIO_*` commands available since dmdrvi v2.6; the node also implements the shared audio stream commands (`AUDIO_GET_STREAM`, `AUDIO_START`, `AUDIO_STOP`, `AUDIO_DRAIN`, ..., dmdrvi v2.7) - the same ones a bare SAI node answers - and drives its SAI friend through them. No CPU family specific code is required in this module.
 
 ## Board configuration
 
@@ -20,7 +20,6 @@ Include `dmdrvi_ioctl.h` for the generic types and commands. `DMDRVI_IOCTL_AUDIO
 ```c
 #include "dmod.h"
 #include "dmdrvi_ioctl.h"
-#include "dmsai_ioctl.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -40,7 +39,7 @@ if (codec) {
         bool muted = false;
         if (Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_MUTE, &muted) == 0) {
             Dmod_FileWrite(pcm, 1, sizeof(pcm), codec);
-            Dmod_Ioctl(codec, DMSAI_IOCTL_DRAIN, NULL);
+            Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_DRAIN, NULL);
             /* With input=dmic2, this reads stereo microphone PCM. */
             Dmod_FileRead(pcm, 1, sizeof(pcm), codec);
         }
@@ -51,7 +50,7 @@ if (codec) {
 if (codec) Dmod_FileClose(codec);
 ```
 
-`AUDIO_CONFIGURE` starts the SAI DMA stream before resetting the codec, so MCLK is present during setup. Drain pending playback with `DMSAI_IOCTL_DRAIN` before closing the codec node, which stops the stream. With `input=dmic2`, `Dmod_FileRead` returns interleaved stereo 16-bit samples from microphone slots 1 and 3; `Dmod_FileWrite` maps stereo samples into headphone slots 0 and 2. `DMSAI_IOCTL_DRAIN`, status and I/O timeout commands can be issued on the codec handle. `GET_INFO` detects a lost codec configuration by reading back the AIF1 rate.
+`AUDIO_CONFIGURE` starts the SAI DMA stream before resetting the codec, so MCLK is present during setup. Drain pending playback with `DMDRVI_IOCTL_AUDIO_DRAIN`; `AUDIO_STOP` or closing the codec node stops the stream, and `AUDIO_START` after a stop applies the last configuration again (before any `AUDIO_CONFIGURE` it returns `-EPIPE`). With `input=dmic2`, `Dmod_FileRead` returns interleaved stereo 16-bit samples from microphone slots 1 and 3; `Dmod_FileWrite` maps stereo samples into headphone slots 0 and 2. `AUDIO_GET_STREAM` reports the stereo 16-bit buffers and, while running, the SAI link; `AUDIO_GET_STATUS` and `AUDIO_DRAIN` are answered by the SAI friend, `AUDIO_SET_TIMEOUT` is kept for the handle and applied to it. `GET_INFO` detects a lost codec configuration by reading back the AIF1 rate.
 
 ## Tools and tests
 
@@ -65,7 +64,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The build fetches dmdrvi v2.6 or newer because that release first contains the generic audio controls. Until `dmsai` has a release package, CMake fetches its public headers from the [organization repository](https://github.com/choco-technologies/dmsai); the firmware must also load a matching `dmsai` module. For STM32F746G-DISCO also use `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`.
+The build fetches dmdrvi v2.7 or newer: v2.6 added the generic audio controls and v2.7 the shared `DMDRVI_IOCTL_AUDIO_*` stream commands the codec implements and uses to drive its SAI friend, so no `dmsai` header is needed. The firmware must load a `dmsai` module that implements those commands. For STM32F746G-DISCO also use `-DDMOD_TOOLS_NAME=arch/armv7/cortex-m7 -DDMOD_CPU_FAMILY=stm32f7`.
 
 ## Sources
 
