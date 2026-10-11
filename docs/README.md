@@ -28,7 +28,6 @@ Supported rates are 8, 11.025, 16, 22.05, 32, 44.1, 48 and 96 kHz at AIF1 256fs.
 ```c
 #include "dmod.h"
 #include "dmdrvi_ioctl.h"
-#include "dmsai_ioctl.h"
 #include <stdint.h>
 
 static int16_t samples[256 * 2];
@@ -40,14 +39,14 @@ dmdrvi_audio_config_t config = {
 };
 if (codec && Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config) == 0) {
     Dmod_FileWrite(samples, 1, sizeof(samples), codec);
-    Dmod_Ioctl(codec, DMSAI_IOCTL_DRAIN, NULL);
+    Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_DRAIN, NULL);
     /* With input=dmic2, capture interleaved stereo microphone samples. */
     Dmod_FileRead(samples, 1, sizeof(samples), codec);
 }
 if (codec) Dmod_FileClose(codec);
 ```
 
-The `dmsai` drain, status and I/O timeout commands can be sent through the codec node. The codec opens and starts its SAI friend when configured, then closes that stream with the codec handle.
+The node implements the shared `DMDRVI_IOCTL_AUDIO_*` stream commands (start, stop, layout, status, timeout, drain) like a bare SAI node does, so a player works on either. The codec opens and starts its SAI friend when configured, then closes that stream with the codec handle.
 
 ## Commands
 

@@ -1,6 +1,6 @@
 #include "dmod.h"
 #include "dmwm8994.h"
-#include "dmsai_ioctl.h"
+#include "dmdrvi_ioctl.h"
 
 static int16_t pcm[256 * 2];
 static int16_t captured[256 * 2];
@@ -14,7 +14,7 @@ static int stream_pcm(void *codec)
         pcm[2 * i + 1] = sample;
     }
     if (Dmod_FileWrite(pcm, 1, sizeof(pcm), codec) != sizeof(pcm)) return -1;
-    if (Dmod_Ioctl(codec, DMSAI_IOCTL_DRAIN, NULL) != 0) return -2;
+    if (Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_DRAIN, NULL) != 0) return -2;
     if (Dmod_FileRead(captured, 1, sizeof(captured), codec) != sizeof(captured))
         return -3;
     int32_t peak = 0;
@@ -25,8 +25,8 @@ static int stream_pcm(void *codec)
         if (magnitude > peak) peak = magnitude;
     }
     Dmod_Printf("WM8994 PLAY TEST: microphone peak=%ld\n", (long)peak);
-    dmsai_status_t status;
-    if (Dmod_Ioctl(codec, DMSAI_IOCTL_GET_STATUS, &status) != 0 ||
+    dmdrvi_audio_status_t status;
+    if (Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_GET_STATUS, &status) != 0 ||
         status.transfer_errors) return -4;
     return 0;
 }
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
     };
     int ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config);
     uint32_t timeout_ms = 1000;
-    if (!ret) ret = Dmod_Ioctl(codec, DMSAI_IOCTL_SET_IO_TIMEOUT, &timeout_ms);
+    if (!ret) ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_TIMEOUT, &timeout_ms);
     uint8_t volume_percent = 60;
     if (!ret) ret = Dmod_Ioctl(codec, DMDRVI_IOCTL_AUDIO_SET_VOLUME, &volume_percent);
     bool muted = false;

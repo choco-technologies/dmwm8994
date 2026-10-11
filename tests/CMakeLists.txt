@@ -14,7 +14,7 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
 )
 
 # The test uses the AUDIO_* types first published by dmdrvi v2.6.
-dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi@>=2.6 dmfsi)
+dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi@>=2.7 dmfsi)
 
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's

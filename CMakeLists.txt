@@ -19,16 +19,6 @@ FetchContent_Declare(
     GIT_TAG        develop
 )
 
-# dmsai has been merged but has no release package yet. Fetch only its public
-# headers from the organization's repository until the first release exists.
-FetchContent_Declare(
-    dmsai_api
-    GIT_REPOSITORY https://github.com/choco-technologies/dmsai.git
-    GIT_TAG        2e85552ceede101d1251fa0cff022e4092879061
-    SOURCE_SUBDIR  _headers_only
-)
-FetchContent_MakeAvailable(dmsai_api)
-
 set(DMOD_MODE "DMOD_MODULE" CACHE STRING "DMOD build mode")
 set(DMOD_BUILD_TESTS OFF CACHE BOOL "Build tests")
 set(DMOD_BUILD_EXAMPLES OFF CACHE BOOL "Build examples")
@@ -77,9 +67,10 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     src/pcm.c
 )
 
-# Generic AUDIO_* ioctls were introduced in dmdrvi v2.6.
+# Generic AUDIO_* ioctls were introduced in dmdrvi v2.6, the PCM_* stream
+# commands the codec uses toward its SAI friend in v2.7.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.6
+    dmdrvi@>=2.7
     dmini
     dmi2c
     dmosi
@@ -87,7 +78,6 @@ dmod_link_modules(${DMOD_MODULE_NAME}
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${dmsai_api_SOURCE_DIR}/include
 )
 
 target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE

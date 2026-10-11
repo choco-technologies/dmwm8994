@@ -1,6 +1,5 @@
 #define DMOD_ENABLE_REGISTRATION ON
 #include "private.h"
-#include "dmsai_ioctl.h"
 #include "registers.h"
 #include <errno.h>
 #include <string.h>
@@ -276,7 +275,78 @@ static int set_control(dmdrvi_context_t c, int command, const void *arg)
     return codec_set_mute(c, *(const bool *)arg);
 }
 
-/** @brief Dispatch standard audio identity, setup, gain and mute controls. */
+/** @brief Start the SAI friend and configure the codec; undo both on failure. */
+static int apply_config(dmdrvi_context_t c, codec_handle_t *open,
+                        const dmdrvi_audio_config_t *config)
+{
+    int ret = codec_validate_config(config);
+    if (!ret) ret = codec_stream_start(c, open, config);
+    if (!ret) ret = codec_configure(c, config);
+    if (ret)
+    {
+        codec_stream_stop(open);
+        c->info.configured = false;
+        return ret;
+    }
+    open->last_config = *config;
+    open->has_config = true;
+    return 0;
+}
+
+/** @brief Describe the stereo buffers and, while running, the SAI link. */
+static int get_stream(dmdrvi_context_t c, codec_handle_t *open,
+                      dmdrvi_audio_stream_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (open->started)
+    {
+        int ret = Dmod_Ioctl(open->sai, DMDRVI_IOCTL_AUDIO_GET_STREAM, out);
+        if (ret) return ret;
+    }
+    else if (open->has_config)
+    {
+        out->sample_rate_hz = open->last_config.sample_rate_hz;
+    }
+    out->format = DMDRVI_AUDIO_FORMAT_S16_LE;
+    out->channels = 2;
+    out->transmit = true;
+    out->receive = c->digital_mic2;
+    return 0;
+}
+
+/**
+ * @brief Stream commands: the codec's own START/STOP/layout/timeout, and
+ * status and drain of the SAI friend while running.
+ */
+static int stream_ioctl(dmdrvi_context_t c, codec_handle_t *open,
+                        int command, void *arg)
+{
+    switch (command)
+    {
+    case DMDRVI_IOCTL_AUDIO_GET_STREAM:
+        return arg ? get_stream(c, open, arg) : -EINVAL;
+    case DMDRVI_IOCTL_AUDIO_START:
+        if (open->started && c->info.configured) return 0;
+        return open->has_config ? apply_config(c, open, &open->last_config)
+                                : -EPIPE;
+    case DMDRVI_IOCTL_AUDIO_STOP:
+        codec_stream_stop(open);
+        c->info.configured = false;
+        return 0;
+    case DMDRVI_IOCTL_AUDIO_GET_TIMEOUT:
+        if (!arg) return -EINVAL;
+        *(uint32_t *)arg = open->timeout_ms;
+        return 0;
+    case DMDRVI_IOCTL_AUDIO_SET_TIMEOUT:
+        if (!arg) return -EINVAL;
+        open->timeout_ms = *(const uint32_t *)arg;
+        return open->started ? Dmod_Ioctl(open->sai, command, arg) : 0;
+    default: /* GET_STATUS, DRAIN */
+        return open->started ? Dmod_Ioctl(open->sai, command, arg) : -EPIPE;
+    }
+}
+
+/** @brief Dispatch the standard audio controls and stream commands. */
 dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, int, _ioctl,
     ( dmdrvi_context_t c, void *handle, int command, void *arg ))
 {
@@ -287,45 +357,23 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, int, _ioctl,
         DMOD_LOG_ERROR("dmwm8994: invalid context on ioctl\n");
         return -EINVAL;
     }
-    if (command == DMSAI_IOCTL_GET_CONFIG ||
-        command == DMSAI_IOCTL_GET_STATUS ||
-        command == DMSAI_IOCTL_SET_IO_TIMEOUT ||
-        command == DMSAI_IOCTL_GET_IO_TIMEOUT ||
-        command == DMSAI_IOCTL_DRAIN)
-    {
-        if (!open->started) return -EPIPE;
-        return Dmod_Ioctl(open->sai, command, arg);
-    }
     if (command < DMDRVI_IOCTL_AUDIO_GET_INFO ||
-        command > DMDRVI_IOCTL_AUDIO_SET_MUTE) return -ENOTTY;
-    if (!arg) return -EINVAL;
+        command > DMDRVI_IOCTL_AUDIO_DRAIN) return -ENOTTY;
+    bool control = command <= DMDRVI_IOCTL_AUDIO_SET_MUTE;
+    if (control && !arg) return -EINVAL;
     dmosi_mutex_lock(c->lock);
-    int ret = 0;
-    if (command == DMDRVI_IOCTL_AUDIO_GET_INFO)
-    {
+    int ret;
+    if (!control)
+        ret = stream_ioctl(c, open, command, arg);
+    else if (command == DMDRVI_IOCTL_AUDIO_GET_INFO)
         ret = read_info(c, arg);
-    }
     else if (command == DMDRVI_IOCTL_AUDIO_CONFIGURE)
-    {
-        ret = codec_validate_config((const dmdrvi_audio_config_t *)arg);
-        if (!ret) ret = codec_stream_start(c, open,
-                                            (const dmdrvi_audio_config_t *)arg);
-        if (!ret)
-        {
-            ret = codec_configure(c, (const dmdrvi_audio_config_t *)arg);
-            if (ret)
-            {
-                codec_stream_stop(open);
-                c->info.configured = false;
-            }
-        }
-    }
+        ret = apply_config(c, open, (const dmdrvi_audio_config_t *)arg);
     else
-    {
         ret = set_control(c, command, arg);
-    }
     dmosi_mutex_unlock(c->lock);
-    if (ret && ret != -ENOTSUP && ret != -ENOTTY && ret != -EINVAL)
+    if (ret && ret != -ENOTSUP && ret != -ENOTTY && ret != -EINVAL &&
+        ret != -EPIPE)
     {
         DMOD_LOG_ERROR("dmwm8994: ioctl %d failed (%d)\n", command, ret);
     }
@@ -340,7 +388,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, int, _flush,
     if (!valid(c) || !open || open->magic != CODEC_HANDLE_MAGIC ||
         c->open_handle != open) return -EBADF;
     if (!open->started) return 0;
-    return Dmod_Ioctl(open->sai, DMSAI_IOCTL_DRAIN, NULL);
+    return Dmod_Ioctl(open->sai, DMDRVI_IOCTL_AUDIO_DRAIN, NULL);
 }
 
 /** @brief Report the codec node's stream device metadata. */
