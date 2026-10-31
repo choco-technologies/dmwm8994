@@ -11,7 +11,7 @@ WM8994 audio codec driver for DMOD. `dmdevfs` mounts the codec node, `dmi2c` car
 
 This configuration owns I2C3 and SAI2. Do not also load `dmft5336`'s `touch.ini`, `dmi2c`'s `i2c3.ini`, or `dmsai`'s `sai2.ini`: each of those would configure one of the same controllers again. To use touch and audio together, load [codec-with-touch.ini](configs/board/stm32f746g-disco/codec-with-touch.ini) instead of `codec.ini`, next to `touch.ini`: it has the SAI2 pins, the SAI and the codec, but no I2C3 pins or bus, and joins `touch.ini`'s `friends_group=lcd` so the codec finds the bus node the touch panel uses (dmi2c serializes the transfers of its clients). Load it with `touch.ini` only - without it the codec has no bus.
 
-On another board, provide an INI section with `driver_name=dmwm8994`, `address=<unshifted 7-bit address>`, and a `friends_group` shared with a `dmi2c` node whose `friend_role=i2c_bus` and a `dmsai` node whose `friend_role=audio_stream`. Set `input=dmic2` for digital microphone 2 capture, or `input=none` for playback only. The section name becomes the codec node name. The driver supports headphone output with two 16-bit channels at 8, 11.025, 16, 22.05, 32, 44.1, 48 or 96 kHz; 48 kHz has been checked on STM32F746G-DISCO.
+On another board, provide an INI section with `driver_name=dmwm8994`, `address=<unshifted 7-bit address>`, and a `friends_group` shared with a `dmi2c` node whose `friend_role=i2c_bus` and a `dmsai` node whose `friend_role=audio_stream`. Set `input=dmic2` for digital microphone 2 capture, or `input=none` for playback only. The section name becomes the codec node name. The driver supports headphone or speaker output (`DMDRVI_AUDIO_OUTPUT_SPEAKER`: the class D outputs SPKOUTL/R - JP4 and JP3 on STM32F746G-DISCO - one at a time with the headphones) with two 16-bit channels at 8, 11.025, 16, 22.05, 32, 44.1, 48 or 96 kHz; 48 kHz has been checked on STM32F746G-DISCO.
 
 ## Control API
 
@@ -50,7 +50,7 @@ if (codec) {
 if (codec) Dmod_FileClose(codec);
 ```
 
-`AUDIO_CONFIGURE` starts the SAI DMA stream before resetting the codec, so MCLK is present during setup. Drain pending playback with `DMDRVI_IOCTL_AUDIO_DRAIN`; `AUDIO_STOP` or closing the codec node stops the stream, and `AUDIO_START` after a stop applies the last configuration again (before any `AUDIO_CONFIGURE` it returns `-EPIPE`). With `input=dmic2`, `Dmod_FileRead` returns interleaved stereo 16-bit samples from microphone slots 1 and 3; `Dmod_FileWrite` maps stereo samples into headphone slots 0 and 2. `AUDIO_GET_STREAM` reports the stereo 16-bit buffers and, while running, the SAI link; `AUDIO_GET_STATUS` and `AUDIO_DRAIN` are answered by the SAI friend, `AUDIO_SET_TIMEOUT` is kept for the handle and applied to it. `GET_INFO` detects a lost codec configuration by reading back the AIF1 rate.
+`AUDIO_CONFIGURE` starts the SAI DMA stream before resetting the codec, so MCLK is present during setup. Drain pending playback with `DMDRVI_IOCTL_AUDIO_DRAIN`; `AUDIO_STOP` or closing the codec node stops the stream, and `AUDIO_START` after a stop applies the last configuration again (before any `AUDIO_CONFIGURE` it returns `-EPIPE`). With `input=dmic2`, `Dmod_FileRead` returns interleaved stereo 16-bit samples from microphone slots 1 and 3; `Dmod_FileWrite` maps stereo samples into slots 0 and 2 (DAC1, which feeds the headphones or the speakers). `AUDIO_GET_STREAM` reports the stereo 16-bit buffers and, while running, the SAI link; `AUDIO_GET_STATUS` and `AUDIO_DRAIN` are answered by the SAI friend, `AUDIO_SET_TIMEOUT` is kept for the handle and applied to it. `GET_INFO` detects a lost codec configuration by reading back the AIF1 rate.
 
 ## Tools and tests
 
@@ -68,7 +68,7 @@ The build fetches dmdrvi v2.7 or newer: v2.6 added the generic audio controls an
 
 ## Sources
 
-The AIF1 routing, clock and headphone startup register values follow [ST's WM8994 component driver](https://github.com/STMicroelectronics/stm32-wm8994/blob/main/wm8994.c); register bit definitions follow its [register header](https://github.com/STMicroelectronics/stm32-wm8994/blob/main/wm8994_reg.h). Board connections follow [ST's STM32F746G Discovery audio BSP](https://github.com/STMicroelectronics/32f746gdiscovery-bsp/blob/main/stm32746g_discovery_audio.c).
+The AIF1 routing, clock, headphone startup and speaker (`OUTPUT_DEVICE_SPEAKER`) register values follow [ST's WM8994 component driver](https://github.com/STMicroelectronics/stm32-wm8994/blob/main/wm8994.c); register bit definitions follow its [register header](https://github.com/STMicroelectronics/stm32-wm8994/blob/main/wm8994_reg.h). Board connections follow [ST's STM32F746G Discovery audio BSP](https://github.com/STMicroelectronics/32f746gdiscovery-bsp/blob/main/stm32746g_discovery_audio.c).
 
 ## License
 

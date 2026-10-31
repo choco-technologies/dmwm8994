@@ -21,11 +21,11 @@ These types and commands are defined by `dmdrvi_ioctl.h` in [dmdrvi v2.6](https:
 | Command | Argument | Behavior |
 | --- | --- | --- |
 | `DMDRVI_IOCTL_AUDIO_GET_INFO` | `dmdrvi_audio_info_t *` output | Reads chip ID, AIF1 rate and mute register; returns hardware ID, last settings and `configured`. |
-| `DMDRVI_IOCTL_AUDIO_CONFIGURE` | `const dmdrvi_audio_config_t *` input | Starts the SAI DMA stream, probes ID, resets WM8994, and configures AIF1, headphone and selected microphone paths. |
-| `DMDRVI_IOCTL_AUDIO_SET_VOLUME` | `const uint8_t *` input | Updates both headphone gains using a 0..100 percentage. Requires prior configuration. |
+| `DMDRVI_IOCTL_AUDIO_CONFIGURE` | `const dmdrvi_audio_config_t *` input | Starts the SAI DMA stream, probes ID, resets WM8994, and configures AIF1, the selected output (headphone or speaker) and microphone paths. |
+| `DMDRVI_IOCTL_AUDIO_SET_VOLUME` | `const uint8_t *` input | Updates both gains of the configured output (headphone, or speaker) using a 0..100 percentage. Requires prior configuration. |
 | `DMDRVI_IOCTL_AUDIO_SET_MUTE` | `const bool *` input | Controls AIF1 DAC1 digital mute. Requires prior configuration. |
 
-`dmdrvi_audio_config_t` has `sample_rate_hz`, `channels`, `sample_bits`, `output`, `volume_percent` and `muted`. This driver accepts two channels, 16 bits, `DMDRVI_AUDIO_OUTPUT_HEADPHONE`, and 8000, 11025, 16000, 22050, 32000, 44100, 48000 or 96000 Hz. Other formats or outputs return `-ENOTSUP`; volume over 100 returns `-EINVAL`. A chip ID other than `0x8994` returns `-ENODEV`. Unknown commands return `-ENOTTY`. `GET_INFO` works before configuration.
+`dmdrvi_audio_config_t` has `sample_rate_hz`, `channels`, `sample_bits`, `output`, `volume_percent` and `muted`. This driver accepts two channels, 16 bits, `DMDRVI_AUDIO_OUTPUT_HEADPHONE` or `DMDRVI_AUDIO_OUTPUT_SPEAKER` (the class D outputs SPKOUTL/R, fed from DAC1 like the headphones; the headphones are off then), and 8000, 11025, 16000, 22050, 32000, 44100, 48000 or 96000 Hz. Other formats or outputs return `-ENOTSUP`; volume over 100 returns `-EINVAL`. A chip ID other than `0x8994` returns `-ENODEV`. Unknown commands return `-ENOTTY`. `GET_INFO` works before configuration.
 
 `AUDIO_CONFIGURE` opens and starts the SAI friend before resetting the codec, so MCLK is running during setup. It requires SAI TDM, signed 16-bit little-endian samples, four 16-bit slots per 64-bit frame, and a matching sample rate. Playback-only configurations may activate slots 0 and 2; `input=dmic2` requires transmit and receive with all four slots active. `GET_INFO` detects a changed rate register and clears `configured`; volume and mute then return `-EPIPE` until reconfiguration. `SET_MUTE` reads the mute bit back and returns `-EIO` if the codec did not apply the change. Close stops the SAI stream.
 
