@@ -196,6 +196,8 @@ static int start_digital_mic2(dmdrvi_context_t c)
  * @brief Route DAC1 to the class D speaker outputs (SPKOUTL/R) - ST's
  * OUTPUT_DEVICE_SPEAKER, fed from DAC1 like the headphones, so the SAI slots
  * stay the same. POWER_1 keeps the bias and microphone bits already set.
+ * speaker=mono mixes both speaker mixers into each output - one speaker plays
+ * the whole stereo signal.
  */
 static int start_speaker(dmdrvi_context_t c)
 {
@@ -206,6 +208,7 @@ static int start_speaker(dmdrvi_context_t c)
         { WM_REG_SPEAKER_MIXER, WM_SPKMIX_DAC1 },
     };
     int ret = write_sequence(c, sequence, sizeof(sequence) / sizeof(sequence[0]));
+    if (!ret && c->speaker_mono) ret = write_reg(c, WM_REG_SPKOUT_MIXERS, WM_SPKOUT_MONO);
     uint16_t power = 0;
     if (!ret) ret = codec_read_reg(c, WM_REG_POWER_1, &power);
     if (!ret) ret = write_reg(c, WM_REG_POWER_1, (uint16_t)(power | WM_POWER_SPKOUT));
