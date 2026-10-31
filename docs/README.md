@@ -15,13 +15,13 @@ Use the generic `DMDRVI_IOCTL_AUDIO_*` commands from `dmdrvi_ioctl.h`:
 | Command | Argument | Effect |
 | --- | --- | --- |
 | `AUDIO_GET_INFO` | `dmdrvi_audio_info_t *` | Read chip ID and current audio state |
-| `AUDIO_CONFIGURE` | `const dmdrvi_audio_config_t *` | Configure 16-bit stereo AIF1 and headphone output |
+| `AUDIO_CONFIGURE` | `const dmdrvi_audio_config_t *` | Configure 16-bit stereo AIF1 and the headphone or speaker output |
 | `AUDIO_SET_VOLUME` | `const uint8_t *` | Set volume from 0 to 100 percent |
 | `AUDIO_SET_MUTE` | `const bool *` | Set playback mute |
 
 The full command names start with `DMDRVI_IOCTL_`. `AUDIO_CONFIGURE` starts SAI before resetting WM8994 so MCLK is present during setup. Write interleaved signed 16-bit stereo PCM to the codec node, drain, then mute and close it. With `input=dmic2`, read the same PCM format from the codec node. SAI timeout, status and drain ioctls are forwarded through the codec handle. A rate-register mismatch makes `GET_INFO` report `configured=false` and prevents volume or mute changes until reconfiguration.
 
-Supported rates are 8, 11.025, 16, 22.05, 32, 44.1, 48 and 96 kHz at AIF1 256fs. The implemented analog route is stereo headphones. Only 48 kHz has been exercised on STM32F746G-DISCO so far.
+Supported rates are 8, 11.025, 16, 22.05, 32, 44.1, 48 and 96 kHz at AIF1 256fs. The implemented analog routes are stereo headphones and the stereo class D speaker outputs (one at a time). Only 48 kHz has been exercised on STM32F746G-DISCO so far.
 
 ## PCM example
 

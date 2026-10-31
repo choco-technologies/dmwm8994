@@ -52,6 +52,14 @@ static int test_valid_node(test_fs_t *fs, const char *node, const char *config_d
         };
         if (fs->ioctl(mount, file, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config) != -ENOTSUP)
             failed = 1;
+        /* A valid speaker configuration gets past the checks, to the missing friends */
+        config.sample_rate_hz = 48000;
+        config.output = DMDRVI_AUDIO_OUTPUT_SPEAKER;
+        if (fs->ioctl(mount, file, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config) != -ENODEV)
+            failed = 1;
+        config.output = DMDRVI_AUDIO_OUTPUT_LINE;
+        if (fs->ioctl(mount, file, DMDRVI_IOCTL_AUDIO_CONFIGURE, &config) != -ENOTSUP)
+            failed = 1;
         fs->fclose(mount, file);
     }
     fs->deinit(mount);

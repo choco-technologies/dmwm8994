@@ -87,14 +87,15 @@ static int write_sequence(dmdrvi_context_t c, const uint16_t (*sequence)[2], siz
     return 0;
 }
 
-/** @brief Set both headphone gains with the volume update bit. */
+/** @brief Set both gains of the configured output (headphone or speaker) with the volume update bit. */
 int codec_set_volume(dmdrvi_context_t c, uint8_t volume)
 {
     if (volume > 100) return -EINVAL;
+    bool speaker = c->info.config.output == DMDRVI_AUDIO_OUTPUT_SPEAKER;
     uint16_t gain_code = (uint16_t)(((uint16_t)volume * WM_HEADPHONE_GAIN_MAX + 50U) / 100U);
     uint16_t value = (uint16_t)(WM_HEADPHONE_UPDATE | WM_HEADPHONE_UNMUTE | gain_code);
-    int ret = write_reg(c, WM_REG_HEADPHONE_LEFT, value);
-    if (!ret) ret = write_reg(c, WM_REG_HEADPHONE_RIGHT, value);
+    int ret = write_reg(c, speaker ? WM_REG_SPEAKER_LEFT : WM_REG_HEADPHONE_LEFT, value);
+    if (!ret) ret = write_reg(c, speaker ? WM_REG_SPEAKER_RIGHT : WM_REG_HEADPHONE_RIGHT, value);
     if (!ret) c->info.config.volume_percent = volume;
     return ret;
 }
@@ -126,6 +127,8 @@ int codec_power_down(dmdrvi_context_t c)
     int ret = write_reg(c, WM_REG_DAC1_FILTER, WM_DAC1_MUTE | WM_DAC1_FILTER_ENABLE);
     if (!ret) ret = write_reg(c, WM_REG_HEADPHONE_LEFT, WM_HEADPHONE_UPDATE);
     if (!ret) ret = write_reg(c, WM_REG_HEADPHONE_RIGHT, WM_HEADPHONE_UPDATE);
+    if (!ret) ret = write_reg(c, WM_REG_SPEAKER_LEFT, WM_HEADPHONE_UPDATE);
+    if (!ret) ret = write_reg(c, WM_REG_SPEAKER_RIGHT, WM_HEADPHONE_UPDATE);
     if (!ret) ret = write_reg(c, WM_REG_RESET, 0x0000);
     c->info.configured = false;
     return ret;
@@ -189,6 +192,26 @@ static int start_digital_mic2(dmdrvi_context_t c)
     return write_sequence(c, sequence, sizeof(sequence) / sizeof(sequence[0]));
 }
 
+/**
+ * @brief Route DAC1 to the class D speaker outputs (SPKOUTL/R) - ST's
+ * OUTPUT_DEVICE_SPEAKER, fed from DAC1 like the headphones, so the SAI slots
+ * stay the same. POWER_1 keeps the bias and microphone bits already set.
+ */
+static int start_speaker(dmdrvi_context_t c)
+{
+    static const uint16_t sequence[][2] = {
+        { WM_REG_POWER_3, WM_POWER_SPKVOL },
+        { WM_REG_SPKMIX_LEFT_ATTEN, 0x0000 },
+        { WM_REG_SPKMIX_RIGHT_ATTEN, WM_SPKMIX_CLASS_D_0DB },
+        { WM_REG_SPEAKER_MIXER, WM_SPKMIX_DAC1 },
+    };
+    int ret = write_sequence(c, sequence, sizeof(sequence) / sizeof(sequence[0]));
+    uint16_t power = 0;
+    if (!ret) ret = codec_read_reg(c, WM_REG_POWER_1, &power);
+    if (!ret) ret = write_reg(c, WM_REG_POWER_1, (uint16_t)(power | WM_POWER_SPKOUT));
+    return ret;
+}
+
 /** @brief Map a PCM rate to its documented AIF1 256fs register code. */
 static int rate_code(uint32_t hz)
 {
@@ -209,14 +232,14 @@ static int rate_code(uint32_t hz)
 int codec_validate_config(const dmdrvi_audio_config_t *config)
 {
     if (!config) return -EINVAL;
-    if (config->output != DMDRVI_AUDIO_OUTPUT_HEADPHONE ||
+    if ((config->output != DMDRVI_AUDIO_OUTPUT_HEADPHONE && config->output != DMDRVI_AUDIO_OUTPUT_SPEAKER) ||
         config->channels != 2 || config->sample_bits != 16)
         return -ENOTSUP;
     if (config->volume_percent > 100) return -EINVAL;
     return rate_code(config->sample_rate_hz) < 0 ? -ENOTSUP : 0;
 }
 
-/** @brief Probe, reset and start the headphone anti-pop sequence. */
+/** @brief Probe, reset and start the output: the headphone anti-pop sequence, or the speaker path. */
 int codec_configure(dmdrvi_context_t c, const dmdrvi_audio_config_t *config)
 {
     int validation = codec_validate_config(config);
@@ -231,13 +254,16 @@ int codec_configure(dmdrvi_context_t c, const dmdrvi_audio_config_t *config)
         return -ENODEV;
     }
     c->info.configured = false;
+    c->info.config.output = config->output;     /* (codec_set_volume picks the registers by it) */
+    bool speaker = config->output == DMDRVI_AUDIO_OUTPUT_SPEAKER;
     ret = write_reg(c, WM_REG_RESET, 0x0000);
     if (!ret) ret = start_bias(c);
     if (!ret) ret = start_digital(c);
     if (!ret && c->digital_mic2) ret = start_digital_mic2(c);
     if (!ret) ret = write_reg(c, WM_REG_AIF1_RATE, (uint16_t)code);
-    if (!ret) ret = write_reg(c, WM_REG_WRITE_SEQUENCER, WM_WRITE_SEQ_START);
-    if (!ret) dmosi_thread_sleep(325);
+    if (!ret && speaker) ret = start_speaker(c);
+    if (!ret && !speaker) ret = write_reg(c, WM_REG_WRITE_SEQUENCER, WM_WRITE_SEQ_START);
+    if (!ret && !speaker) dmosi_thread_sleep(325);
     if (!ret) ret = codec_set_volume(c, config->volume_percent);
     if (!ret) ret = codec_set_mute(c, config->muted);
     if (ret) return ret;

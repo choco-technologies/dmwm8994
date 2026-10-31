@@ -6,12 +6,18 @@
 #define WM_REG_RESET               0x0000U
 #define WM_REG_POWER_1             0x0001U
 #define WM_REG_POWER_2             0x0002U
+#define WM_REG_POWER_3             0x0003U
 #define WM_REG_POWER_4             0x0004U
 #define WM_REG_POWER_5             0x0005U
 #define WM_REG_HEADPHONE_LEFT      0x001CU
 #define WM_REG_HEADPHONE_RIGHT     0x001DU
+#define WM_REG_SPKMIX_LEFT_ATTEN   0x0022U
+#define WM_REG_SPKMIX_RIGHT_ATTEN  0x0023U
+#define WM_REG_SPEAKER_LEFT        0x0026U
+#define WM_REG_SPEAKER_RIGHT       0x0027U
 #define WM_REG_OUTPUT_MIXER_LEFT   0x002DU
 #define WM_REG_OUTPUT_MIXER_RIGHT  0x002EU
+#define WM_REG_SPEAKER_MIXER       0x0036U
 #define WM_REG_ANTIPOP_2           0x0039U
 #define WM_REG_WRITE_SEQUENCER     0x0110U
 #define WM_REG_AIF1_CLOCKING       0x0200U
@@ -55,6 +61,12 @@
 #define WM_ROUTE_AIF1_TO_DAC1      0x0001U
 #define WM_ROUTE_DMIC2_TO_ADC2     0x0002U
 #define WM_OUTPUT_DAC1_TO_HP       0x0100U
+/* Speaker path (ST's OUTPUT_DEVICE_SPEAKER, here fed from DAC1 like the
+ * headphones): the speaker volume registers have the headphone layout. */
+#define WM_POWER_SPKOUT            0x3000U   /* POWER_1: SPKOUTL_ENA | SPKOUTR_ENA */
+#define WM_POWER_SPKVOL            0x0300U   /* POWER_3: SPKLVOL_ENA | SPKRVOL_ENA */
+#define WM_SPKMIX_CLASS_D_0DB      0x0000U   /* SPKMIXR_ATTEN: class D, 0 dB (0x0100: class AB) */
+#define WM_SPKMIX_DAC1             0x0003U   /* DAC1L_TO_SPKMIXL | DAC1R_TO_SPKMIXR */
 #define WM_CORE_AIF1_DSP_CLOCKS    0x000AU
 #define WM_AIF1_MCLK1_ENABLE       0x0001U
 #define WM_AIF1_I2S_16BIT          0x4010U
