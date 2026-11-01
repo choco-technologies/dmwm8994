@@ -11,6 +11,7 @@
 | `friends_group` | Group containing a `dmi2c` node with `friend_role=i2c_bus` and a `dmsai` node with `friend_role=audio_stream` |
 | `input` | `none` (default) for playback or `dmic2` for digital microphone 2 capture |
 | `speaker` | `stereo` (default) or `mono`: with `DMDRVI_AUDIO_OUTPUT_SPEAKER`, each speaker output plays left + right (one speaker connected) |
+| `speaker_volume_max` | 1..100 (default 100): the share of the speaker gain range that volume 100% gives - a cap for a supply the class D amplifier at full gain overloads (the STM32F746G-DISCO board configurations: 80) |
 | `driver_order` | Place after pins and I2C/SAI controllers when using one board file |
 
 The section name is the codec device node name and must be 1..32 characters. An ioctl before the I2C friend is available returns `-ENODEV`; `AUDIO_CONFIGURE` also needs a ready SAI friend. The STM32F746G-DISCO board file is [codec.ini](../configs/board/stm32f746g-disco/codec.ini); it configures all pins, I2C3, SAI2 and WM8994 in one friend group. Its address 26 is the 7-bit form of ST's shifted `AUDIO_I2C_ADDRESS=0x34` in the [board header](https://github.com/STMicroelectronics/32f746gdiscovery-bsp/blob/main/stm32746g_discovery.h).
@@ -23,7 +24,7 @@ These types and commands are defined by `dmdrvi_ioctl.h` in [dmdrvi v2.6](https:
 | --- | --- | --- |
 | `DMDRVI_IOCTL_AUDIO_GET_INFO` | `dmdrvi_audio_info_t *` output | Reads chip ID, AIF1 rate and mute register; returns hardware ID, last settings and `configured`. |
 | `DMDRVI_IOCTL_AUDIO_CONFIGURE` | `const dmdrvi_audio_config_t *` input | Starts the SAI DMA stream, probes ID, resets WM8994, and configures AIF1, the selected output (headphone or speaker) and microphone paths. |
-| `DMDRVI_IOCTL_AUDIO_SET_VOLUME` | `const uint8_t *` input | Updates both gains of the configured output (headphone, or speaker) using a 0..100 percentage. Requires prior configuration. |
+| `DMDRVI_IOCTL_AUDIO_SET_VOLUME` | `const uint8_t *` input | Updates both gains of the configured output (headphone, or speaker) using a 0..100 percentage (on the speakers scaled by `speaker_volume_max`). Requires prior configuration. |
 | `DMDRVI_IOCTL_AUDIO_SET_MUTE` | `const bool *` input | Controls AIF1 DAC1 digital mute. Requires prior configuration. |
 
 `dmdrvi_audio_config_t` has `sample_rate_hz`, `channels`, `sample_bits`, `output`, `volume_percent` and `muted`. This driver accepts two channels, 16 bits, `DMDRVI_AUDIO_OUTPUT_HEADPHONE` or `DMDRVI_AUDIO_OUTPUT_SPEAKER` (the class D outputs SPKOUTL/R, fed from DAC1 like the headphones; the headphones are off then), and 8000, 11025, 16000, 22050, 32000, 44100, 48000 or 96000 Hz. Other formats or outputs return `-ENOTSUP`; volume over 100 returns `-EINVAL`. A chip ID other than `0x8994` returns `-ENODEV`. Unknown commands return `-ENOTTY`. `GET_INFO` works before configuration.

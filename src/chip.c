@@ -87,12 +87,19 @@ static int write_sequence(dmdrvi_context_t c, const uint16_t (*sequence)[2], siz
     return 0;
 }
 
-/** @brief Set both gains of the configured output (headphone or speaker) with the volume update bit. */
+/**
+ * @brief Set both gains of the configured output (headphone or speaker) with the volume update bit.
+ *
+ * On the speakers volume 100% is speaker_volume_max of the gain range: a class D
+ * amplifier at full gain can draw more than the board's supply gives (on the
+ * Discovery the SD card drops out).
+ */
 int codec_set_volume(dmdrvi_context_t c, uint8_t volume)
 {
     if (volume > 100) return -EINVAL;
     bool speaker = c->info.config.output == DMDRVI_AUDIO_OUTPUT_SPEAKER;
-    uint16_t gain_code = (uint16_t)(((uint16_t)volume * WM_HEADPHONE_GAIN_MAX + 50U) / 100U);
+    uint32_t scale = speaker ? c->speaker_volume_max : 100U;
+    uint16_t gain_code = (uint16_t)(((uint32_t)volume * scale * WM_HEADPHONE_GAIN_MAX + 5000U) / 10000U);
     uint16_t value = (uint16_t)(WM_HEADPHONE_UPDATE | WM_HEADPHONE_UNMUTE | gain_code);
     int ret = write_reg(c, speaker ? WM_REG_SPEAKER_LEFT : WM_REG_HEADPHONE_LEFT, value);
     if (!ret) ret = write_reg(c, speaker ? WM_REG_SPEAKER_RIGHT : WM_REG_HEADPHONE_RIGHT, value);
