@@ -50,7 +50,8 @@ int dmod_deinit(void)
 
 /** @brief Validate the bus address and node name in one INI section. */
 static bool parse_node_config(dmini_context_t config, int *address,
-                              const char **section, bool *digital_mic2)
+                              const char **section, bool *digital_mic2,
+                              bool *speaker_mono)
 {
     *address = dmini_get_int(config, NULL, "address", 0);
     if (*address < CODEC_I2C_FIRST_ADDRESS ||
@@ -73,6 +74,13 @@ static bool parse_node_config(dmini_context_t config, int *address,
         return false;
     }
     *digital_mic2 = strcmp(input, "dmic2") == 0;
+    const char *speaker = dmini_get_string(config, NULL, "speaker", "stereo");
+    if (strcmp(speaker, "stereo") && strcmp(speaker, "mono"))
+    {
+        DMOD_LOG_ERROR("dmwm8994: unsupported speaker mode %s\n", speaker);
+        return false;
+    }
+    *speaker_mono = strcmp(speaker, "mono") == 0;
     return true;
 }
 
@@ -88,7 +96,8 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, dmdrvi_context_t, _create,
     int address = 0;
     const char *section = NULL;
     bool digital_mic2 = false;
-    if (!parse_node_config(config, &address, &section, &digital_mic2)) return NULL;
+    bool speaker_mono = false;
+    if (!parse_node_config(config, &address, &section, &digital_mic2, &speaker_mono)) return NULL;
     dmdrvi_context_t c = Dmod_Malloc(sizeof(*c));
     if (!c)
     {
@@ -99,6 +108,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, dmdrvi_context_t, _create,
     c->magic = CODEC_MAGIC;
     c->address = (uint16_t)address;
     c->digital_mic2 = digital_mic2;
+    c->speaker_mono = speaker_mono;
     c->lock = dmosi_mutex_create(false);
     if (!c->lock)
     {
