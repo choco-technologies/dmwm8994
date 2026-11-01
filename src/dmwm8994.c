@@ -51,7 +51,7 @@ int dmod_deinit(void)
 /** @brief Validate the bus address and node name in one INI section. */
 static bool parse_node_config(dmini_context_t config, int *address,
                               const char **section, bool *digital_mic2,
-                              bool *speaker_mono)
+                              bool *speaker_mono, uint8_t *speaker_volume_max)
 {
     *address = dmini_get_int(config, NULL, "address", 0);
     if (*address < CODEC_I2C_FIRST_ADDRESS ||
@@ -81,6 +81,13 @@ static bool parse_node_config(dmini_context_t config, int *address,
         return false;
     }
     *speaker_mono = strcmp(speaker, "mono") == 0;
+    int volume_max = dmini_get_int(config, NULL, "speaker_volume_max", 100);
+    if (volume_max < 1 || volume_max > 100)
+    {
+        DMOD_LOG_ERROR("dmwm8994: speaker_volume_max %d is not 1..100\n", volume_max);
+        return false;
+    }
+    *speaker_volume_max = (uint8_t)volume_max;
     return true;
 }
 
@@ -97,7 +104,9 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, dmdrvi_context_t, _create,
     const char *section = NULL;
     bool digital_mic2 = false;
     bool speaker_mono = false;
-    if (!parse_node_config(config, &address, &section, &digital_mic2, &speaker_mono)) return NULL;
+    uint8_t speaker_volume_max = 100;
+    if (!parse_node_config(config, &address, &section, &digital_mic2, &speaker_mono,
+                           &speaker_volume_max)) return NULL;
     dmdrvi_context_t c = Dmod_Malloc(sizeof(*c));
     if (!c)
     {
@@ -109,6 +118,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmwm8994, dmdrvi_context_t, _create,
     c->address = (uint16_t)address;
     c->digital_mic2 = digital_mic2;
     c->speaker_mono = speaker_mono;
+    c->speaker_volume_max = speaker_volume_max;
     c->lock = dmosi_mutex_create(false);
     if (!c->lock)
     {

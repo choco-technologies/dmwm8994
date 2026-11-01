@@ -33,6 +33,7 @@ struct dmdrvi_context {
     codec_handle_t *open_handle;
     bool digital_mic2;
     bool speaker_mono;          /* speaker=mono: both speakers play left + right */
+    uint8_t speaker_volume_max; /* speaker_volume_max: the gain volume 100% gives on the speakers, in % */
     uint16_t address;
     uint16_t expected_rate_register;
     codec_i2c_scratch_t i2c;
